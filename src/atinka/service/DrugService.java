@@ -3,9 +3,7 @@ package atinka.service;
 import atinka.dsa.*;
 import atinka.model.Drug;
 
-/**
- * Drug master service — custom DS only.
- */
+/** Drug master service — custom DS only. */
 public class DrugService {
     private final Vec<Drug> drugs = new Vec<>();
     private final HashMapOpen<Drug> byCode = new HashMapOpen<>();
@@ -16,8 +14,7 @@ public class DrugService {
         if (byCode.get(d.getCode()) != null) return false;
         drugs.add(d);
         byCode.put(d.getCode(), d);
-        // seed reverse index from existing links
-        d.getSupplierIds().forEach(sup -> linkDrugToSupplier(d.getCode(), sup));
+        d.getSupplierIds().forEach(sup -> linkDrugToSupplier(d.getCode(), sup)); // seed reverse index
         return true;
     }
 
@@ -25,11 +22,9 @@ public class DrugService {
         if (code == null) return false;
         Drug old = byCode.remove(code);
         if (old == null) return false;
-        // remove from backing vector (linear scan)
         for (int i = 0; i < drugs.size(); i++) {
             if (drugs.get(i).getCode().equalsIgnoreCase(code)) { drugs.removeAt(i); break; }
         }
-        // clean reverse index
         supplierToDrugs.forEach((sup,set) -> { if (set != null) set.remove(code); });
         return true;
     }
@@ -43,11 +38,20 @@ public class DrugService {
         ex.setStock(u.getStock());
         ex.setExpiry(u.getExpiry());
         ex.setReorderThreshold(u.getReorderThreshold());
-        // Links managed via link/unlink methods
         return true;
     }
 
     public Drug getByCode(String code) { return byCode.get(code); }
+
+    /** Binary-search by code on a sorted copy (for demonstration O(log n)). */
+    public Drug findByCodeBinary(String code) {
+        if (code == null) return null;
+        Vec<Drug> v = all(); // copy
+        MergeSort.sort(v, (a,b) -> a.getCode().compareToIgnoreCase(b.getCode()));
+        Drug key = new Drug(code, "_", 0.0, 0, java.time.LocalDate.now(), 0);
+        int idx = BinarySearch.indexOf(v, key, (a,b) -> a.getCode().compareToIgnoreCase(b.getCode()));
+        return (idx >= 0) ? v.get(idx) : null;
+    }
 
     public Vec<Drug> searchByNameContains(String term) {
         String q = term == null ? "" : term.toLowerCase();
@@ -69,13 +73,13 @@ public class DrugService {
     }
 
     public Vec<Drug> listSortedByName() {
-        Vec<Drug> v = copyDrugs();
+        Vec<Drug> v = all();
         InsertionSort.sort(v, (a,b) -> a.getName().compareToIgnoreCase(b.getName()));
         return v;
     }
 
     public Vec<Drug> listSortedByPrice() {
-        Vec<Drug> v = copyDrugs();
+        Vec<Drug> v = all();
         InsertionSort.sort(v, (a,b) -> Double.compare(a.getPrice(), b.getPrice()));
         return v;
     }
@@ -97,16 +101,15 @@ public class DrugService {
         if (set != null) set.remove(code);
     }
 
-    public Vec<Drug> all() { return copyDrugs(); }
-    public HashMapOpen<Drug> indexByCode() { return byCode; }
-
-    // ---------- helpers ----------
-    private Vec<Drug> copyDrugs() {
+    public Vec<Drug> all() { // copy
         Vec<Drug> v = new Vec<>(drugs.size());
         for (int i = 0; i < drugs.size(); i++) v.add(drugs.get(i));
         return v;
     }
 
+    public HashMapOpen<Drug> indexByCode() { return byCode; }
+
+    // --- helpers ---
     private boolean containsIgnoreCase(String hay, String needle) {
         if (needle == null || needle.length() == 0) return true;
         int n = hay.length(), m = needle.length();

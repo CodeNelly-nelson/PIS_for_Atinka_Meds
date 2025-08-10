@@ -50,7 +50,7 @@ public class InventoryService {
         return t;
     }
 
-    // Return the most recent N purchases for a specific drug (scan from end)
+    // Most recent N purchases for a specific drug (scan from end)
     public Vec<PurchaseTxn> latestPurchases(String drugCode, int n) {
         Vec<PurchaseTxn> out = new Vec<>();
         int count = 0;
@@ -58,8 +58,21 @@ public class InventoryService {
             PurchaseTxn t = purchasesAll.get(i);
             if (t.getDrugCode().equalsIgnoreCase(drugCode)) { out.add(t); count++; }
         }
-        // out is newest→oldest; keep as-is (CLI prints in that order)
         return out;
+    }
+
+    // Sorted purchase history by time
+    public Vec<PurchaseTxn> purchasesForDrugSortedByTime(String code, boolean ascending) {
+        Vec<PurchaseTxn> tmp = new Vec<>();
+        for (int i = 0; i < purchasesAll.size(); i++) {
+            PurchaseTxn t = purchasesAll.get(i);
+            if (t.getDrugCode().equalsIgnoreCase(code)) tmp.add(t);
+        }
+        MergeSort.sort(tmp, (a,b) -> {
+            int cmp = a.getTimestamp().compareTo(b.getTimestamp());
+            return ascending ? cmp : -cmp;
+        });
+        return tmp;
     }
 
     // Sales between timestamps (inclusive)

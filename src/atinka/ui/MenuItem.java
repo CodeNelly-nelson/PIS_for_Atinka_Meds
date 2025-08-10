@@ -1,2 +1,7 @@
-package atinka.ui;public class MenuItem {
+package atinka.ui;
+
+/** Single menu entry + action (Command pattern). */
+public interface MenuItem {
+    String label();
+    void run();
 }
