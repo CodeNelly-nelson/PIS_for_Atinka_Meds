@@ -11,6 +11,7 @@ public final class PathsFS {
     public static final Path CUSTOMERS = ROOT.resolve("customers.csv");
     public static final Path PURCHASE_LOG = ROOT.resolve("purchase_log.csv");
     public static final Path SALES_LOG = ROOT.resolve("sales_log.csv");
+    public static final Path REPORTS_DIR = ROOT.resolve("reports");
 
     private PathsFS() {}
 
@@ -22,6 +23,7 @@ public final class PathsFS {
             if (Files.notExists(CUSTOMERS)) Files.createFile(CUSTOMERS);
             if (Files.notExists(PURCHASE_LOG)) Files.createFile(PURCHASE_LOG);
             if (Files.notExists(SALES_LOG)) Files.createFile(SALES_LOG);
+            Files.createDirectories(REPORTS_DIR);
         } catch (IOException e) {
             throw new RuntimeException("Failed to init data folder", e);
         }

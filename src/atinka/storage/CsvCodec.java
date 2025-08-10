@@ -1,9 +1,9 @@
 package atinka.storage;
 
-import java.util.ArrayList;
-import java.util.List;
-
-/** Tiny CSV (pipe) codec with escaping for '|' and '\\'. */
+/**
+ * Minimal CSV (pipe) codec without java.util.
+ * Escapes '|' and '\\' using a leading backslash.
+ */
 public final class CsvCodec {
     private CsvCodec() {}
 
@@ -16,18 +16,27 @@ public final class CsvCodec {
         return sb.toString();
     }
 
-    public static List<String> split(String line) {
-        List<String> out = new ArrayList<>();
+    public static String[] split(String line) {
+        String[] parts = new String[8];
+        int count = 0;
         StringBuilder cur = new StringBuilder();
         boolean esc = false;
         for (int i = 0; i < line.length(); i++) {
             char c = line.charAt(i);
-            if (esc) { cur.append(c); esc = false; }
-            else if (c == '\\') { esc = true; }
-            else if (c == '|') { out.add(cur.toString()); cur.setLength(0); }
-            else { cur.append(c); }
+            if (esc) { cur.append(c); esc = false; continue; }
+            if (c == '\\') { esc = true; continue; }
+            if (c == '|') {
+                if (count == parts.length) parts = grow(parts);
+                parts[count++] = cur.toString();
+                cur.setLength(0);
+            } else {
+                cur.append(c);
+            }
         }
-        out.add(cur.toString());
+        if (count == parts.length) parts = grow(parts);
+        parts[count++] = cur.toString();
+        String[] out = new String[count];
+        for (int i = 0; i < count; i++) out[i] = parts[i];
         return out;
     }
 
@@ -39,5 +48,11 @@ public final class CsvCodec {
             sb.append(c);
         }
         return sb.toString();
+    }
+
+    private static String[] grow(String[] a) {
+        String[] b = new String[a.length << 1];
+        for (int i = 0; i < a.length; i++) b[i] = a[i];
+        return b;
     }
 }

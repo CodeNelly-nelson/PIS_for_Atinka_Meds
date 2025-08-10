@@ -2,11 +2,14 @@ package atinka.storage;
 
 import atinka.model.PurchaseTxn;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
-import java.util.*;
 
 /** Append-only log for purchases. */
 public class PurchaseLogCsv {
@@ -20,18 +23,34 @@ public class PurchaseLogCsv {
         } catch (IOException e) { throw new RuntimeException(e); }
     }
 
-    public List<PurchaseTxn> readAll() {
-        List<PurchaseTxn> list = new ArrayList<>();
+    /** Reads entire log as a freshly allocated array (no java.util). */
+    public PurchaseTxn[] readAll() {
+        // First pass: count lines
+        int count = 0;
         try (BufferedReader br = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            String line; while ((line = br.readLine()) != null) {
+            while (true) { String line = br.readLine(); if (line == null) break; if (!line.isBlank()) count++; }
+        } catch (IOException e) { throw new RuntimeException(e); }
+        // Second pass: fill array
+        PurchaseTxn[] arr = new PurchaseTxn[count];
+        int i = 0;
+        try (BufferedReader br = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = br.readLine()) != null) {
                 if (line.isBlank()) continue;
-                var f = CsvCodec.split(line);
-                list.add(new PurchaseTxn(
-                        f.get(0), f.get(1), Integer.parseInt(f.get(2)), f.get(3),
-                        LocalDateTime.parse(f.get(4)), Double.parseDouble(f.get(5))
-                ));
+                String[] f = CsvCodec.split(line);
+                arr[i++] = new PurchaseTxn(
+                        f.length>0?f[0]:"",
+                        f.length>1?f[1]:"",
+                        f.length>2?parseIntSafe(f[2]):0,
+                        f.length>3?f[3]:"",
+                        f.length>4?LocalDateTime.parse(f[4]):LocalDateTime.now(),
+                        f.length>5?parseDoubleSafe(f[5]):0.0
+                );
             }
         } catch (IOException e) { throw new RuntimeException(e); }
-        return list;
+        return arr;
     }
+
+    private static int parseIntSafe(String s){ try{ return Integer.parseInt(s);}catch(Exception e){return 0;} }
+    private static double parseDoubleSafe(String s){ try{ return Double.parseDouble(s);}catch(Exception e){return 0.0;} }
 }

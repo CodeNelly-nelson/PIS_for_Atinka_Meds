@@ -1,10 +1,10 @@
 package atinka.model;
 
 import java.time.LocalDateTime;
-import java.util.Objects;
 
+/** Sale transaction, no java.util. */
 public class SaleTxn {
-    private final String id;                // unique
+    private final String id;        // unique
     private final String drugCode;
     private final int qty;
     private final String customerId;
@@ -12,11 +12,12 @@ public class SaleTxn {
     private final double total;
 
     public SaleTxn(String id, String drugCode, int qty, String customerId, LocalDateTime ts, double total) {
-        this.id = Objects.requireNonNull(id).trim();
-        this.drugCode = Objects.requireNonNull(drugCode).trim();
+        if (id == null || drugCode == null || ts == null) throw new IllegalArgumentException("Null fields not allowed");
+        this.id = id.trim();
+        this.drugCode = drugCode.trim();
         this.qty = Math.max(0, qty);
-        this.customerId = Objects.requireNonNullElse(customerId, "").trim();
-        this.timestamp = Objects.requireNonNull(ts);
+        this.customerId = customerId == null ? "" : customerId.trim();
+        this.timestamp = ts;
         this.total = total;
     }
 
@@ -27,8 +28,17 @@ public class SaleTxn {
     public LocalDateTime getTimestamp() { return timestamp; }
     public double getTotal() { return total; }
 
-    @Override public String toString() {
-        return String.format("SaleTxn{id=%s, drug=%s, qty=%d, customer=%s, time=%s, total=%.2f}",
-                id, drugCode, qty, customerId, timestamp, total);
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("SaleTxn{")
+                .append("id=").append(id)
+                .append(", drug=").append(drugCode)
+                .append(", qty=").append(qty)
+                .append(", customer=").append(customerId)
+                .append(", time=").append(timestamp)
+                .append(", total=").append(String.format("%.2f", total))
+                .append("}");
+        return sb.toString();
     }
 }

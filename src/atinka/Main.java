@@ -4,17 +4,18 @@ import atinka.util.ConsoleIO;
 import atinka.model.*;
 import atinka.service.*;
 import atinka.storage.*;
+import atinka.dsa.Vec;
+import atinka.report.PerformanceReport;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 
 public class Main {
     public static void main(String[] args) {
         PathsFS.ensure();
         ConsoleIO.clearScreen();
         ConsoleIO.printHeader("Atinka Meds — Pharmacy Inventory System (CLI)");
-        ConsoleIO.println("Offline-first • CSV persistence enabled (Steps 5–6)\n");
+        ConsoleIO.println("Offline-first • Custom DS • CSV persistence\n");
 
         // Storage
         DrugCsvStore drugStore = new DrugCsvStore();
@@ -38,10 +39,16 @@ class Services {
 
     Services(DrugCsvStore drugStore, SupplierCsvStore supplierStore, CustomerCsvStore customerStore,
              PurchaseLogCsv purchaseLog, SaleLogCsv saleLog) {
-        // Load masters
-        for (Drug d : drugStore.loadAll()) drugs.addDrug(d);
-        for (Supplier s : supplierStore.loadAll()) suppliers.add(s);
-        for (Customer c : customerStore.loadAll()) customers.add(c);
+        // Load masters using custom Vec
+        Vec<Drug> dAll = drugStore.loadAll();
+        for (int i = 0; i < dAll.size(); i++) drugs.addDrug(dAll.get(i));
+
+        Vec<Supplier> sAll = supplierStore.loadAll();
+        for (int i = 0; i < sAll.size(); i++) suppliers.add(sAll.get(i));
+
+        Vec<Customer> cAll = customerStore.loadAll();
+        for (int i = 0; i < cAll.size(); i++) customers.add(cAll.get(i));
+
         inventory.rebuildLowStockHeap();
     }
 }
@@ -95,14 +102,16 @@ class MenuRouter {
             ConsoleIO.println("2) List drugs (by name)");
             ConsoleIO.println("3) List drugs (by price)");
             ConsoleIO.println("4) Search drugs");
+            ConsoleIO.println("5) Link/Unlink supplier");
             ConsoleIO.println("0) Back\n");
-            int c = ConsoleIO.readIntInRange("Choose: ", 0, 4);
+            int c = ConsoleIO.readIntInRange("Choose: ", 0, 5);
             if (c == 0) return;
             switch (c) {
                 case 1 -> addDrugFlow();
                 case 2 -> listDrugsByName();
                 case 3 -> listDrugsByPrice();
                 case 4 -> searchDrugsFlow();
+                case 5 -> linkUnlinkSupplierFlow();
             }
             ConsoleIO.readLine("\nPress ENTER...");
         }
@@ -124,11 +133,14 @@ class MenuRouter {
     private void listDrugsByName() { renderDrugs(sv.drugs.listSortedByName()); }
     private void listDrugsByPrice() { renderDrugs(sv.drugs.listSortedByPrice()); }
 
-    private void renderDrugs(List<Drug> list) {
-        if (list.isEmpty()) { ConsoleIO.println("No drugs."); return; }
+    private void renderDrugs(Vec<Drug> list) {
+        if (list == null || list.size() == 0) { ConsoleIO.println("No drugs."); return; }
         ConsoleIO.println(String.format("%-12s %-28s %8s %8s %12s %8s", "CODE", "NAME", "PRICE", "STOCK", "EXPIRY", "THRESH"));
-        for (Drug d : list) ConsoleIO.println(String.format("%-12s %-28s %8.2f %8d %12s %8d",
-                d.getCode(), d.getName(), d.getPrice(), d.getStock(), d.getExpiry(), d.getReorderThreshold()));
+        for (int i = 0; i < list.size(); i++) {
+            Drug d = list.get(i);
+            ConsoleIO.println(String.format("%-12s %-28s %8.2f %8d %12s %8d",
+                    d.getCode(), d.getName(), d.getPrice(), d.getStock(), d.getExpiry(), d.getReorderThreshold()));
+        }
     }
 
     private void searchDrugsFlow() {
@@ -142,7 +154,7 @@ class MenuRouter {
                 String code = ConsoleIO.readLine("Enter code: ");
                 Drug d = sv.drugs.getByCode(code);
                 if (d == null) ConsoleIO.println("Not found.");
-                else renderDrugs(List.of(d));
+                else { Vec<Drug> one = new Vec<>(); one.add(d); renderDrugs(one); }
             }
             case 2 -> {
                 String term = ConsoleIO.readLine("Name contains: ");
@@ -155,6 +167,15 @@ class MenuRouter {
         }
     }
 
+    private void linkUnlinkSupplierFlow() {
+        String code = ConsoleIO.readLine("Drug code: ");
+        String supId = ConsoleIO.readLine("Supplier ID: ");
+        int mode = ConsoleIO.readIntInRange("1) Link  2) Unlink: ", 1, 2);
+        if (mode == 1) sv.drugs.linkDrugToSupplier(code, supId); else sv.drugs.unlinkDrugFromSupplier(code, supId);
+        drugStore.saveAll(sv.drugs.all());
+        ConsoleIO.println(mode == 1 ? "Linked & saved." : "Unlinked & saved.");
+    }
+
     // ---------------- Suppliers ----------------
     private void suppliersMenu() {
         while (true) {
@@ -162,20 +183,12 @@ class MenuRouter {
             ConsoleIO.printHeader("Suppliers");
             ConsoleIO.println("1) Add supplier");
             ConsoleIO.println("2) List suppliers");
-            ConsoleIO.println("3) Filter by location");
-            ConsoleIO.println("4) Filter by turnaround ≤ days");
-            ConsoleIO.println("5) Link drug ↔ supplier");
-            ConsoleIO.println("6) Unlink drug ↔ supplier");
             ConsoleIO.println("0) Back\n");
-            int c = ConsoleIO.readIntInRange("Choose: ", 0, 6);
+            int c = ConsoleIO.readIntInRange("Choose: ", 0, 2);
             if (c == 0) return;
             switch (c) {
                 case 1 -> addSupplierFlow();
                 case 2 -> listSuppliers();
-                case 3 -> filterSuppliersByLocation();
-                case 4 -> filterSuppliersByTurnaround();
-                case 5 -> linkDrugSupplierFlow(true);
-                case 6 -> linkDrugSupplierFlow(false);
             }
             ConsoleIO.readLine("\nPress ENTER...");
         }
@@ -192,43 +205,14 @@ class MenuRouter {
     }
 
     private void listSuppliers() {
-        var list = sv.suppliers.all();
+        Vec<Supplier> list = sv.suppliers.all();
         if (list.isEmpty()) { ConsoleIO.println("No suppliers."); return; }
         ConsoleIO.println(String.format("%-6s %-20s %-16s %6s %-15s", "ID", "NAME", "LOCATION", "TA", "CONTACT"));
-        for (Supplier s : list) ConsoleIO.println(String.format("%-6s %-20s %-16s %6d %-15s",
-                s.getId(), s.getName(), s.getLocation(), s.getTurnaroundDays(), s.getContact()));
-    }
-
-    private void filterSuppliersByLocation() {
-        String q = ConsoleIO.readLine("Location contains: ");
-        var list = sv.suppliers.filterByLocation(q);
-        if (list.isEmpty()) { ConsoleIO.println("No matches."); return; }
-        ConsoleIO.println(String.format("%-6s %-20s %-16s %6s %-15s", "ID", "NAME", "LOCATION", "TA", "CONTACT"));
-        for (Supplier s : list) ConsoleIO.println(String.format("%-6s %-20s %-16s %6d %-15s",
-                s.getId(), s.getName(), s.getLocation(), s.getTurnaroundDays(), s.getContact()));
-    }
-
-    private void filterSuppliersByTurnaround() {
-        int days = ConsoleIO.readIntInRange("Max days: ", 0, 365);
-        var list = sv.suppliers.filterByTurnaroundAtMost(days);
-        if (list.isEmpty()) { ConsoleIO.println("No matches."); return; }
-        ConsoleIO.println(String.format("%-6s %-20s %-16s %6s %-15s", "ID", "NAME", "LOCATION", "TA", "CONTACT"));
-        for (Supplier s : list) ConsoleIO.println(String.format("%-6s %-20s %-16s %6d %-15s",
-                s.getId(), s.getName(), s.getLocation(), s.getTurnaroundDays(), s.getContact()));
-    }
-
-    private void linkDrugSupplierFlow(boolean link) {
-        String code = ConsoleIO.readLine("Drug code: ");
-        String supId = ConsoleIO.readLine("Supplier ID: ");
-        if (link) {
-            sv.drugs.linkDrugToSupplier(code, supId);
-            ConsoleIO.println("Linked.");
-        } else {
-            sv.drugs.unlinkDrugFromSupplier(code, supId);
-            ConsoleIO.println("Unlinked.");
+        for (int i = 0; i < list.size(); i++) {
+            Supplier s = list.get(i);
+            ConsoleIO.println(String.format("%-6s %-20s %-16s %6d %-15s",
+                    s.getId(), s.getName(), s.getLocation(), s.getTurnaroundDays(), s.getContact()));
         }
-        // Persist supplier mapping via drugs.csv
-        drugStore.saveAll(sv.drugs.all());
     }
 
     // ---------------- Customers ----------------
@@ -258,10 +242,13 @@ class MenuRouter {
     }
 
     private void listCustomers() {
-        var list = sv.customers.all();
+        Vec<Customer> list = sv.customers.all();
         if (list.isEmpty()) { ConsoleIO.println("No customers."); return; }
         ConsoleIO.println(String.format("%-6s %-24s %-18s", "ID", "NAME", "CONTACT"));
-        for (Customer c : list) ConsoleIO.println(String.format("%-6s %-24s %-18s", c.getId(), c.getName(), c.getContact()));
+        for (int i = 0; i < list.size(); i++) {
+            Customer c = list.get(i);
+            ConsoleIO.println(String.format("%-6s %-24s %-18s", c.getId(), c.getName(), c.getContact()));
+        }
     }
 
     // ---------------- Purchases ----------------
@@ -299,9 +286,9 @@ class MenuRouter {
 
     private void latest5PurchasesFlow() {
         String code = ConsoleIO.readLine("Drug code: ");
-        var list = sv.inventory.latestPurchases(code, 5);
-        if (list.isEmpty()) { ConsoleIO.println("No purchases for this drug."); return; }
-        for (PurchaseTxn t : list) ConsoleIO.println(t.toString());
+        Vec<PurchaseTxn> list = sv.inventory.latestPurchases(code, 5);
+        if (list == null || list.size() == 0) { ConsoleIO.println("No purchases for this drug."); return; }
+        for (int i = 0; i < list.size(); i++) ConsoleIO.println(list.get(i).toString());
     }
 
     // ---------------- Sales ----------------
@@ -341,12 +328,11 @@ class MenuRouter {
         String to = ConsoleIO.readLine("To   (YYYY-MM-DD): ");
         LocalDateTime a = LocalDate.parse(from).atStartOfDay();
         LocalDateTime b = LocalDate.parse(to).atTime(23,59,59);
-        var all = saleLog.readAll();
+        SaleTxn[] all = saleLog.readAll();
         double total = 0.0; int count = 0;
-        for (SaleTxn s : all) {
-            if (!s.getTimestamp().isBefore(a) && !s.getTimestamp().isAfter(b)) {
-                count++; total += s.getTotal();
-            }
+        for (int i = 0; i < all.length; i++) {
+            SaleTxn s = all[i];
+            if (!s.getTimestamp().isBefore(a) && !s.getTimestamp().isAfter(b)) { count++; total += s.getTotal(); }
         }
         ConsoleIO.println("Sales count: " + count);
         ConsoleIO.println(String.format("Total value: %.2f", total));
@@ -372,25 +358,39 @@ class MenuRouter {
 
     private void lowStockTopNFlow() {
         int n = ConsoleIO.readIntInRange("How many items? ", 1, Integer.MAX_VALUE);
-        var list = sv.inventory.lowStockTopN(n);
-        if (list.isEmpty()) { ConsoleIO.println("No drugs."); return; }
+        Vec<Drug> list = sv.inventory.lowStockTopN(n);
+        if (list == null || list.size() == 0) { ConsoleIO.println("No drugs."); return; }
         ConsoleIO.println(String.format("%-12s %-28s %8s %8s", "CODE", "NAME", "PRICE", "STOCK"));
-        for (Drug d : list) ConsoleIO.println(String.format("%-12s %-28s %8.2f %8d", d.getCode(), d.getName(), d.getPrice(), d.getStock()));
+        for (int i = 0; i < list.size(); i++) {
+            Drug d = list.get(i);
+            ConsoleIO.println(String.format("%-12s %-28s %8.2f %8d", d.getCode(), d.getName(), d.getPrice(), d.getStock()));
+        }
     }
 
     private void belowThresholdFlow() {
-        var list = sv.inventory.belowThreshold();
-        if (list.isEmpty()) { ConsoleIO.println("Nothing below threshold."); return; }
+        Vec<Drug> list = sv.inventory.belowThreshold();
+        if (list == null || list.size() == 0) { ConsoleIO.println("Nothing below threshold."); return; }
         ConsoleIO.println(String.format("%-12s %-28s %8s %8s %8s", "CODE", "NAME", "STOCK", "THRESH", "PRICE"));
-        for (Drug d : list) ConsoleIO.println(String.format("%-12s %-28s %8d %8d %8.2f", d.getCode(), d.getName(), d.getStock(), d.getReorderThreshold(), d.getPrice()));
+        for (int i = 0; i < list.size(); i++) {
+            Drug d = list.get(i);
+            ConsoleIO.println(String.format("%-12s %-28s %8d %8d %8.2f", d.getCode(), d.getName(), d.getStock(), d.getReorderThreshold(), d.getPrice()));
+        }
     }
-
 
     // ---------------- Reports ----------------
     private void reportsMenu() {
         ConsoleIO.clearScreen();
         ConsoleIO.printHeader("Reports");
-        ConsoleIO.println("TODO: Algorithm performance report (Big-O/Ω) — Step 7\n");
-        ConsoleIO.readLine("Press ENTER...");
+        ConsoleIO.println("1) Generate Algorithm Performance Report");
+        ConsoleIO.println("0) Back\n");
+        int c = ConsoleIO.readIntInRange("Choose: ", 0, 1);
+        if (c == 0) return;
+        try {
+            java.nio.file.Path path = PerformanceReport.generate(sv.drugs);
+            ConsoleIO.println("Report written to: " + path.toAbsolutePath());
+        } catch (Exception ex) {
+            ConsoleIO.println("Failed to generate report: " + ex.getMessage());
+        }
+        ConsoleIO.readLine("\nPress ENTER...");
     }
 }

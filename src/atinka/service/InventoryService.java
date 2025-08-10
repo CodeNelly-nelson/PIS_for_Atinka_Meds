@@ -1,104 +1,100 @@
 package atinka.service;
 
-import atinka.data_structures.LinkedQueue;
-import atinka.data_structures.LinkedStack;
-import atinka.data_structures.MinHeap;
+import atinka.dsa.*;
 import atinka.model.*;
-import atinka.util.IdGen;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.*;
 
-/** Handles purchases, sales, stock updates, alerts, and basic reports. */
+/**
+ * Inventory operations — custom DS only.
+ * - Purchases: queued (LinkedQueue) + stored in Vec for traversal
+ * - Sales:     stack (LinkedStack) + stored in Vec for traversal
+ * - Low stock: MinHeap snapshot built from current drugs
+ */
 public class InventoryService {
     private final DrugService drugService;
+    private final LinkedQueue<PurchaseTxn> purchasesQ = new LinkedQueue<>();
+    private final Vec<PurchaseTxn> purchasesAll = new Vec<>();
+    private final LinkedStack<SaleTxn> salesStack = new LinkedStack<>();
+    private final Vec<SaleTxn> salesAll = new Vec<>();
+    private MinHeap<Drug> lowStockHeap = new MinHeap<>((a,b) -> Integer.compare(a.getStock(), b.getStock()));
 
-    // Logs
-    private final LinkedQueue<PurchaseTxn> purchases = new LinkedQueue<>();
-    private final LinkedStack<SaleTxn> sales = new LinkedStack<>();
-
-    // Per-drug ring of most recent purchases (we'll just keep a deque size<=5)
-    private final Map<String, Deque<PurchaseTxn>> recentPurchases = new HashMap<>();
-
-    // Low-stock heap (min by stock)
-    private MinHeap<Drug> lowStockHeap = new MinHeap<>(Comparator.comparingInt(Drug::getStock));
-
-    public InventoryService(DrugService drugService) {
-        this.drugService = drugService;
+    public InventoryService(DrugService ds) {
+        this.drugService = ds;
         rebuildLowStockHeap();
     }
 
+    // ---------- Transactions ----------
     public PurchaseTxn recordPurchase(String drugCode, int qty, String buyerId, double unitPrice) {
         Drug d = drugService.getByCode(drugCode);
-        if (d == null) throw new IllegalArgumentException("Drug not found: " + drugCode);
-        if (qty < 0) throw new IllegalArgumentException("Quantity must be >= 0");
-        // Update stock & (optionally) price based on purchase price policy (kept simple here)
+        if (d == null) throw new IllegalArgumentException("Drug not found");
+        if (qty < 0) throw new IllegalArgumentException("qty>=0");
         d.setStock(d.getStock() + qty);
-        // total cost uses given unit price
-        double total = unitPrice * qty;
-        PurchaseTxn t = new PurchaseTxn(IdGen.nextPurchase(), drugCode, qty, buyerId, LocalDateTime.now(), total);
-        purchases.enqueue(t);
-        Deque<PurchaseTxn> dq = recentPurchases.computeIfAbsent(drugCode, k -> new ArrayDeque<>());
-        dq.addFirst(t); while (dq.size() > 5) dq.removeLast();
+        PurchaseTxn t = new PurchaseTxn(atinka.util.IdGen.nextPurchase(), drugCode, qty, buyerId, LocalDateTime.now(), unitPrice * qty);
+        purchasesQ.enqueue(t); purchasesAll.add(t);
         rebuildLowStockHeap();
         return t;
     }
 
     public SaleTxn recordSale(String drugCode, int qty, String customerId) {
         Drug d = drugService.getByCode(drugCode);
-        if (d == null) throw new IllegalArgumentException("Drug not found: " + drugCode);
-        if (qty <= 0) throw new IllegalArgumentException("Quantity must be > 0");
-        if (d.isExpiredAt(LocalDate.now())) throw new IllegalStateException("Cannot sell expired drug: " + d.getName());
-        if (qty > d.getStock()) throw new IllegalStateException("Insufficient stock. Available: " + d.getStock());
+        if (d == null) throw new IllegalArgumentException("Drug not found");
+        if (qty <= 0) throw new IllegalArgumentException("qty>0");
+        if (d.isExpiredAt(LocalDate.now())) throw new IllegalStateException("Expired");
+        if (qty > d.getStock()) throw new IllegalStateException("Insufficient stock");
         d.setStock(d.getStock() - qty);
-        double total = d.getPrice() * qty;
-        SaleTxn t = new SaleTxn(IdGen.nextSale(), drugCode, qty, customerId, LocalDateTime.now(), total);
-        sales.push(t);
+        SaleTxn t = new SaleTxn(atinka.util.IdGen.nextSale(), drugCode, qty, customerId, LocalDateTime.now(), d.getPrice() * qty);
+        salesStack.push(t); salesAll.add(t);
         rebuildLowStockHeap();
         return t;
     }
 
-    public List<PurchaseTxn> latestPurchases(String drugCode, int k) {
-        Deque<PurchaseTxn> dq = recentPurchases.getOrDefault(drugCode, new ArrayDeque<>());
-        List<PurchaseTxn> out = new ArrayList<>();
-        int i = 0; for (PurchaseTxn t : dq) { if (i++ >= k) break; out.add(t); }
+    // Return the most recent N purchases for a specific drug (scan from end)
+    public Vec<PurchaseTxn> latestPurchases(String drugCode, int n) {
+        Vec<PurchaseTxn> out = new Vec<>();
+        int count = 0;
+        for (int i = purchasesAll.size() - 1; i >= 0 && count < n; i--) {
+            PurchaseTxn t = purchasesAll.get(i);
+            if (t.getDrugCode().equalsIgnoreCase(drugCode)) { out.add(t); count++; }
+        }
+        // out is newest→oldest; keep as-is (CLI prints in that order)
         return out;
     }
 
-    public List<SaleTxn> salesBetween(LocalDateTime start, LocalDateTime end) {
-        // Since we use a stack, iterate by popping into temp (non-destructive by copy)
-        List<SaleTxn> all = new ArrayList<>();
-        LinkedStack<SaleTxn> tmp = new LinkedStack<>();
-        while (!sales.isEmpty()) { SaleTxn x = sales.pop(); tmp.push(x); }
-        while (!tmp.isEmpty()) { SaleTxn x = tmp.pop(); sales.push(x); all.add(x); }
-        List<SaleTxn> out = new ArrayList<>();
-        for (SaleTxn s : all) if (!s.getTimestamp().isBefore(start) && !s.getTimestamp().isAfter(end)) out.add(s);
+    // Sales between timestamps (inclusive)
+    public Vec<SaleTxn> salesBetween(LocalDateTime from, LocalDateTime to) {
+        Vec<SaleTxn> out = new Vec<>();
+        for (int i = 0; i < salesAll.size(); i++) {
+            SaleTxn s = salesAll.get(i);
+            if (!s.getTimestamp().isBefore(from) && !s.getTimestamp().isAfter(to)) out.add(s);
+        }
         return out;
     }
 
-    public List<Drug> belowThreshold() {
-        List<Drug> out = new ArrayList<>();
-        for (Drug d : drugService.all()) if (d.getStock() < d.getReorderThreshold()) out.add(d);
-        return out;
-    }
-
-    public List<Drug> lowStockTopN(int n) {
-        // Non-destructive read by copying to a new heap
-        MinHeap<Drug> heap = snapshotHeap();
-        List<Drug> out = new ArrayList<>();
-        for (int i = 0; i < n && !heap.isEmpty(); i++) out.add(heap.extractMin());
-        return out;
-    }
-
+    // ---------- Stock monitoring ----------
     public void rebuildLowStockHeap() {
-        lowStockHeap = new MinHeap<>(Comparator.comparingInt(Drug::getStock));
-        for (Drug d : drugService.all()) lowStockHeap.insert(d);
+        lowStockHeap = new MinHeap<>((a,b) -> Integer.compare(a.getStock(), b.getStock()));
+        Vec<Drug> all = drugService.all();
+        for (int i = 0; i < all.size(); i++) lowStockHeap.insert(all.get(i));
     }
 
-    private MinHeap<Drug> snapshotHeap() {
-        MinHeap<Drug> copy = new MinHeap<>(Comparator.comparingInt(Drug::getStock));
-        for (Drug d : drugService.all()) copy.insert(d);
-        return copy;
+    public Vec<Drug> belowThreshold() {
+        Vec<Drug> out = new Vec<>();
+        Vec<Drug> all = drugService.all();
+        for (int i = 0; i < all.size(); i++) {
+            Drug d = all.get(i);
+            if (d.getStock() < d.getReorderThreshold()) out.add(d);
+        }
+        return out;
+    }
+
+    public Vec<Drug> lowStockTopN(int n) {
+        MinHeap<Drug> snap = new MinHeap<>((a,b) -> Integer.compare(a.getStock(), b.getStock()));
+        Vec<Drug> all = drugService.all();
+        for (int i = 0; i < all.size(); i++) snap.insert(all.get(i));
+        Vec<Drug> out = new Vec<>();
+        for (int i = 0; i < n; i++) { Drug d = snap.extractMin(); if (d == null) break; out.add(d); }
+        return out;
     }
 }

@@ -1,0 +1,36 @@
+Atinka Meds — Algorithm Performance Report
+Generated: 2025-08-10T02:12:57.663431
+
+Data snapshot
+- Drug count: 1
+
+Sorting (by name)
+- InsertionSort: comparisons=0, time=1.341 ms
+- MergeSort:     comparisons=0, time=0.223 ms
+
+Theoretical
+- InsertionSort:  O(n^2) worst, Ω(n) best (nearly-sorted).
+- MergeSort:      O(n log n) time, Ω(n log n); stable; O(n) extra space.
+
+Searching (by code)
+- BinarySearch (on code): comparisons≈2 over 2 lookups
+- HashMap lookup:        comparisons≈0 (N/A), time=0.017 ms over 2 lookups
+
+Theoretical
+- Binary search: O(log n), Ω(1) best; requires sorted data.
+- Hash map:      O(1) average, O(n) worst with many collisions.
+
+Searching (name contains)
+- Linear scan: elements_visited=1, hits=1, time=0.011 ms
+
+Theoretical
+- Linear search: O(n) worst/average, Ω(1) best if first item matches.
+
+Other structures (qualitative complexity)
+- LinkedQueue enqueue/dequeue: O(1).
+- LinkedStack push/pop:        O(1).
+- MinHeap insert/extractMin:   O(log n), peek O(1).
+
+Notes
+- Times are approximate and depend on current dataset and machine.
+- Comparisons counted via comparator wrappers; linear scans count each element visited.

@@ -1,64 +1,78 @@
 package atinka.util;
 
-import java.util.Scanner;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 
+/**
+ * Console utilities without java.util.Scanner.
+ * Provides prompting, typed reads, and simple screen formatting.
+ */
 public final class ConsoleIO {
-    private static final Scanner SC = new Scanner(System.in);
+    private static final BufferedReader READER = new BufferedReader(new InputStreamReader(System.in));
 
     private ConsoleIO() {}
 
-    public static void printHeader(String text) {
-        println("==============================");
-        println(text);
-        println("==============================");
-    }
-
-    public static void print(String s) { System.out.print(s); }
-    public static void println(String s) { System.out.println(s); }
-
     public static void clearScreen() {
         try {
-            if (System.getProperty("os.name").toLowerCase().contains("win")) {
-                new ProcessBuilder("cmd", "/c", "cls").inheritIO().start().waitFor();
+            String os = System.getProperty("os.name");
+            if (os != null && os.toLowerCase().startsWith("windows")) {
+                // Best-effort: print many newlines
+                for (int i = 0; i < 60; i++) System.out.println();
             } else {
                 System.out.print("\033[H\033[2J");
                 System.out.flush();
             }
-        } catch (Exception ignored) {
-            for (int i = 0; i < 4; i++) System.out.println();
+        } catch (Exception ignored) {}
+    }
+
+    public static void printHeader(String title) {
+        println("==============================");
+        println(title);
+        println("==============================");
+    }
+
+    public static void println(String s) { System.out.println(s); }
+    public static void print(String s) { System.out.print(s); }
+
+    /** Reads a whole line (can be empty). */
+    public static String readLine(String prompt) {
+        if (prompt != null) print(prompt);
+        try {
+            String line = READER.readLine();
+            return line == null ? "" : line.trim();
+        } catch (IOException e) {
+            return "";
         }
     }
 
-    public static String readLine(String prompt) {
-        System.out.print(prompt);
-        return SC.nextLine().trim();
-    }
-
+    /** Reads an integer in [min, max]. Re-prompts on invalid input. */
     public static int readIntInRange(String prompt, int min, int max) {
         while (true) {
-            System.out.print(prompt);
-            String s = SC.nextLine().trim();
+            String s = readLine(prompt);
             try {
                 int v = Integer.parseInt(s);
                 if (v < min || v > max) {
-                    System.out.println("Please enter a number between " + min + " and " + max + ".");
-                } else return v;
-            } catch (NumberFormatException ex) {
-                System.out.println("Invalid number. Try again.");
+                    println("Enter a number between " + min + " and " + max + ".");
+                } else {
+                    return v;
+                }
+            } catch (Exception ex) {
+                println("Invalid number. Try again.");
             }
         }
     }
 
+    /** Reads a strictly positive double (> 0). */
     public static double readPositiveDouble(String prompt) {
         while (true) {
-            System.out.print(prompt);
-            String s = SC.nextLine().trim();
+            String s = readLine(prompt);
             try {
-                double d = Double.parseDouble(s);
-                if (d < 0) System.out.println("Value must be non-negative.");
-                else return d;
-            } catch (NumberFormatException ex) {
-                System.out.println("Invalid decimal number. Try again.");
+                double v = Double.parseDouble(s);
+                if (v <= 0) println("Enter a value > 0.");
+                else return v;
+            } catch (Exception ex) {
+                println("Invalid number. Try again.");
             }
         }
     }

@@ -1,25 +1,32 @@
 package atinka.model;
 
-import java.util.Objects;
-
+/** Customer model without java.util. */
 public class Customer {
-    private final String id;                // unique
+    private final String id;   // unique
     private String name;
     private String contact;
 
     public Customer(String id, String name, String contact) {
-        this.id = Objects.requireNonNull(id).trim();
-        this.name = Objects.requireNonNull(name).trim();
-        this.contact = Objects.requireNonNullElse(contact, "").trim();
+        if (id == null || name == null) throw new IllegalArgumentException("Null fields not allowed");
+        this.id = id.trim();
+        this.name = name.trim();
+        this.contact = contact == null ? "" : contact.trim();
     }
 
     public String getId() { return id; }
     public String getName() { return name; }
-    public void setName(String name) { this.name = Objects.requireNonNull(name).trim(); }
+    public void setName(String name) { if (name == null) throw new IllegalArgumentException(); this.name = name.trim(); }
     public String getContact() { return contact; }
-    public void setContact(String c) { this.contact = Objects.requireNonNullElse(c, "").trim(); }
+    public void setContact(String c) { this.contact = c == null ? "" : c.trim(); }
 
-    @Override public boolean equals(Object o) { return (o instanceof Customer c) && c.id.equalsIgnoreCase(id); }
-    @Override public int hashCode() { return id.toLowerCase().hashCode(); }
-    @Override public String toString() { return String.format("Customer{id=%s, name=%s, contact=%s}", id, name, contact); }
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Customer{")
+                .append("id=").append(id)
+                .append(", name=").append(name)
+                .append(", contact=").append(contact)
+                .append("}");
+        return sb.toString();
+    }
 }

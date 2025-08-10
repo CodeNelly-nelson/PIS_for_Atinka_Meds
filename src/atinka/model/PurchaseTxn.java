@@ -1,22 +1,23 @@
 package atinka.model;
 
 import java.time.LocalDateTime;
-import java.util.Objects;
 
+/** Purchase transaction, no java.util. */
 public class PurchaseTxn {
-    private final String id;                // unique
+    private final String id;        // unique
     private final String drugCode;
     private final int qty;
-    private final String buyerId;           // supplier or internal buyer code
+    private final String buyerId;   // supplier or internal buyer code
     private final LocalDateTime timestamp;
     private final double total;
 
     public PurchaseTxn(String id, String drugCode, int qty, String buyerId, LocalDateTime ts, double total) {
-        this.id = Objects.requireNonNull(id).trim();
-        this.drugCode = Objects.requireNonNull(drugCode).trim();
+        if (id == null || drugCode == null || ts == null) throw new IllegalArgumentException("Null fields not allowed");
+        this.id = id.trim();
+        this.drugCode = drugCode.trim();
         this.qty = Math.max(0, qty);
-        this.buyerId = Objects.requireNonNullElse(buyerId, "").trim();
-        this.timestamp = Objects.requireNonNull(ts);
+        this.buyerId = buyerId == null ? "" : buyerId.trim();
+        this.timestamp = ts;
         this.total = total;
     }
 
@@ -27,8 +28,17 @@ public class PurchaseTxn {
     public LocalDateTime getTimestamp() { return timestamp; }
     public double getTotal() { return total; }
 
-    @Override public String toString() {
-        return String.format("PurchaseTxn{id=%s, drug=%s, qty=%d, buyer=%s, time=%s, total=%.2f}",
-                id, drugCode, qty, buyerId, timestamp, total);
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("PurchaseTxn{")
+                .append("id=").append(id)
+                .append(", drug=").append(drugCode)
+                .append(", qty=").append(qty)
+                .append(", buyer=").append(buyerId)
+                .append(", time=").append(timestamp)
+                .append(", total=").append(String.format("%.2f", total))
+                .append("}");
+        return sb.toString();
     }
 }
