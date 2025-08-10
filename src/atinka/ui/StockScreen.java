@@ -5,6 +5,7 @@ import atinka.model.Drug;
 import atinka.service.InventoryService;
 import atinka.util.ConsoleIO;
 
+/** Stock monitor screen — all prompts support 0 = cancel. */
 public final class StockScreen extends Screen {
     private final InventoryService inventory;
     public StockScreen(InventoryService inv){ this.inventory=inv; }
@@ -28,14 +29,24 @@ public final class StockScreen extends Screen {
     }
 
     private void topN(){
-        int n=ConsoleIO.readIntInRange("How many items? ",1,Integer.MAX_VALUE);
-        Vec<Drug> list=inventory.lowStockTopN(n);
-        render(list, false);
+        int n = ConsoleIO.readIntOrCancel("How many items?");
+        if (n == Integer.MIN_VALUE) { ConsoleIO.println("Cancelled."); return; }
+        if (n <= 0) { ConsoleIO.println("Enter a positive number."); return; }
+        try {
+            Vec<Drug> list=inventory.lowStockTopN(n);
+            render(list, false);
+        } catch (Exception ex) {
+            ConsoleIO.println("Error: " + ex.getMessage());
+        }
     }
 
     private void belowThreshold(){
-        Vec<Drug> list=inventory.belowThreshold();
-        render(list, true);
+        try {
+            Vec<Drug> list=inventory.belowThreshold();
+            render(list, true);
+        } catch (Exception ex) {
+            ConsoleIO.println("Error: " + ex.getMessage());
+        }
     }
 
     private void render(Vec<Drug> list, boolean withThresh){

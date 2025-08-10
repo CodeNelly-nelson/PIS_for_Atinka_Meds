@@ -6,10 +6,11 @@ import atinka.service.DrugService;
 import atinka.service.InventoryService;
 import atinka.storage.DrugCsvStore;
 import atinka.util.ConsoleIO;
+import atinka.util.DateUtil;
 
 import java.time.LocalDate;
 
-/** All drug flows, isolated from Main (terminal only). */
+/** All drug flows (terminal only). Every prompt supports 0 = cancel. */
 public final class DrugScreen extends Screen {
     private final DrugService drugs;
     private final InventoryService inventory;
@@ -50,51 +51,91 @@ public final class DrugScreen extends Screen {
     }
 
     private void addDrugFlow() {
-        String code = ConsoleIO.readLine("Drug code (unique): ");
-        String name = ConsoleIO.readLine("Name: ");
-        double price = ConsoleIO.readPositiveDouble("Unit price: ");
-        int stock = ConsoleIO.readIntInRange("Initial stock: ", 0, Integer.MAX_VALUE);
-        String expiry = ConsoleIO.readLine("Expiry (YYYY-MM-DD): ");
-        int thresh = ConsoleIO.readIntInRange("Reorder threshold: ", 0, Integer.MAX_VALUE);
+        try {
+            String code = ConsoleIO.readLineOrCancel("Drug code (unique)");
+            if (code == null) { ConsoleIO.println("Cancelled."); return; }
 
-        Drug d = new Drug(code, name, price, stock, LocalDate.parse(expiry), thresh);
-        boolean ok = drugs.addDrug(d);
-        if (ok) {
-            drugStore.saveAll(drugs.all());
-            inventory.rebuildLowStockHeap();
-            ConsoleIO.println("Added & saved.");
-        } else {
-            ConsoleIO.println("Code exists. Not added.");
+            String name = ConsoleIO.readLineOrCancel("Name");
+            if (name == null) { ConsoleIO.println("Cancelled."); return; }
+
+            double price = ConsoleIO.readPositiveDoubleOrCancel("Unit price");
+            if (price == Double.NEGATIVE_INFINITY) { ConsoleIO.println("Cancelled."); return; }
+
+            int stock = ConsoleIO.readIntOrCancel("Initial stock");
+            if (stock == Integer.MIN_VALUE) { ConsoleIO.println("Cancelled."); return; }
+
+            String expiryIn = ConsoleIO.readLineOrCancel("Expiry (YYYY-MM-DD)");
+            if (expiryIn == null) { ConsoleIO.println("Cancelled."); return; }
+            LocalDate expiry = DateUtil.parseDateOrNull(expiryIn);
+            if (expiry == null) { ConsoleIO.println("Invalid date. Use YYYY-MM-DD."); return; }
+
+            int thresh = ConsoleIO.readIntOrCancel("Reorder threshold");
+            if (thresh == Integer.MIN_VALUE) { ConsoleIO.println("Cancelled."); return; }
+
+            Drug d = new Drug(code, name, price, stock, expiry, thresh);
+            boolean ok = drugs.addDrug(d);
+            if (ok) {
+                drugStore.saveAll(drugs.all());
+                inventory.rebuildLowStockHeap();
+                ConsoleIO.println("Added & saved.");
+            } else {
+                ConsoleIO.println("Code exists. Not added.");
+            }
+        } catch (Exception ex) {
+            ConsoleIO.println("Error: " + ex.getMessage());
         }
     }
 
     private void updateDrugFlow() {
-        String code = ConsoleIO.readLine("Drug code to update: ");
-        Drug existing = drugs.getByCode(code);
-        if (existing == null) { ConsoleIO.println("Not found."); return; }
+        try {
+            String code = ConsoleIO.readLineOrCancel("Drug code to update");
+            if (code == null) { ConsoleIO.println("Cancelled."); return; }
+            Drug existing = drugs.getByCode(code);
+            if (existing == null) { ConsoleIO.println("Not found."); return; }
 
-        String name = ConsoleIO.readLine("Name [" + existing.getName() + "]: ");
-        if (!name.isEmpty()) existing.setName(name);
+            ConsoleIO.println("Enter new values or leave empty to keep current. Enter 0 to cancel the whole update.");
 
-        String p = ConsoleIO.readLine("Price [" + existing.getPrice() + "]: ");
-        if (!p.isEmpty()) existing.setPrice(Double.parseDouble(p));
+            String name = ConsoleIO.readLineOrCancel("Name [" + existing.getName() + "]");
+            if (name == null) { ConsoleIO.println("Cancelled."); return; }
+            if (!name.isEmpty()) existing.setName(name);
 
-        String s = ConsoleIO.readLine("Stock [" + existing.getStock() + "]: ");
-        if (!s.isEmpty()) existing.setStock(Integer.parseInt(s));
+            String p = ConsoleIO.readLineOrCancel("Price [" + existing.getPrice() + "]");
+            if (p == null) { ConsoleIO.println("Cancelled."); return; }
+            if (!p.isEmpty()) {
+                try { existing.setPrice(Double.parseDouble(p)); } catch (Exception e) { ConsoleIO.println("Invalid price."); return; }
+            }
 
-        String e = ConsoleIO.readLine("Expiry [" + existing.getExpiry() + "] (YYYY-MM-DD): ");
-        if (!e.isEmpty()) existing.setExpiry(LocalDate.parse(e));
+            String s = ConsoleIO.readLineOrCancel("Stock [" + existing.getStock() + "]");
+            if (s == null) { ConsoleIO.println("Cancelled."); return; }
+            if (!s.isEmpty()) {
+                try { existing.setStock(Integer.parseInt(s)); } catch (Exception e) { ConsoleIO.println("Invalid stock."); return; }
+            }
 
-        String t = ConsoleIO.readLine("Reorder threshold [" + existing.getReorderThreshold() + "]: ");
-        if (!t.isEmpty()) existing.setReorderThreshold(Integer.parseInt(t));
+            String e = ConsoleIO.readLineOrCancel("Expiry [" + existing.getExpiry() + "] (YYYY-MM-DD)");
+            if (e == null) { ConsoleIO.println("Cancelled."); return; }
+            if (!e.isEmpty()) {
+                LocalDate d = DateUtil.parseDateOrNull(e);
+                if (d == null) { ConsoleIO.println("Invalid date."); return; }
+                existing.setExpiry(d);
+            }
 
-        boolean ok = drugs.updateDrug(existing);
-        if (ok) { drugStore.saveAll(drugs.all()); inventory.rebuildLowStockHeap(); ConsoleIO.println("Updated & saved."); }
-        else ConsoleIO.println("Update failed.");
+            String t = ConsoleIO.readLineOrCancel("Reorder threshold [" + existing.getReorderThreshold() + "]");
+            if (t == null) { ConsoleIO.println("Cancelled."); return; }
+            if (!t.isEmpty()) {
+                try { existing.setReorderThreshold(Integer.parseInt(t)); } catch (Exception ex) { ConsoleIO.println("Invalid threshold."); return; }
+            }
+
+            boolean ok = drugs.updateDrug(existing);
+            if (ok) { drugStore.saveAll(drugs.all()); inventory.rebuildLowStockHeap(); ConsoleIO.println("Updated & saved."); }
+            else ConsoleIO.println("Update failed.");
+        } catch (Exception ex) {
+            ConsoleIO.println("Error: " + ex.getMessage());
+        }
     }
 
     private void removeDrugFlow() {
-        String code = ConsoleIO.readLine("Drug code to remove: ");
+        String code = ConsoleIO.readLineOrCancel("Drug code to remove");
+        if (code == null) { ConsoleIO.println("Cancelled."); return; }
         boolean ok = drugs.removeDrug(code);
         if (ok) { drugStore.saveAll(drugs.all()); inventory.rebuildLowStockHeap(); ConsoleIO.println("Removed & saved."); }
         else ConsoleIO.println("Not found; nothing removed.");
@@ -106,35 +147,44 @@ public final class DrugScreen extends Screen {
         ConsoleIO.println("2) Code (Binary search)");
         ConsoleIO.println("3) Name contains");
         ConsoleIO.println("4) Supplier ID");
-        int ch = ConsoleIO.readIntInRange("Choose: ", 1, 4);
+        ConsoleIO.println("0) Back\n");
+        int ch = ConsoleIO.readIntInRange("Choose: ", 0, 4);
+        if (ch == 0) { ConsoleIO.println("Cancelled."); return; }
         switch (ch) {
             case 1 -> {
-                String code = ConsoleIO.readLine("Enter code: ");
+                String code = ConsoleIO.readLineOrCancel("Enter code");
+                if (code == null) { ConsoleIO.println("Cancelled."); return; }
                 Drug d = drugs.getByCode(code);
                 if (d == null) ConsoleIO.println("Not found.");
                 else { Vec<Drug> one = new Vec<>(); one.add(d); renderDrugs(one); }
             }
             case 2 -> {
-                String code = ConsoleIO.readLine("Enter code: ");
+                String code = ConsoleIO.readLineOrCancel("Enter code");
+                if (code == null) { ConsoleIO.println("Cancelled."); return; }
                 Drug d = drugs.findByCodeBinary(code);
                 if (d == null) ConsoleIO.println("Not found (binary).");
                 else { Vec<Drug> one = new Vec<>(); one.add(d); renderDrugs(one); }
             }
             case 3 -> {
-                String term = ConsoleIO.readLine("Name contains: ");
+                String term = ConsoleIO.readLineOrCancel("Name contains");
+                if (term == null) { ConsoleIO.println("Cancelled."); return; }
                 renderDrugs(drugs.searchByNameContains(term));
             }
             case 4 -> {
-                String sup = ConsoleIO.readLine("Supplier ID: ");
+                String sup = ConsoleIO.readLineOrCancel("Supplier ID");
+                if (sup == null) { ConsoleIO.println("Cancelled."); return; }
                 renderDrugs(drugs.searchBySupplier(sup));
             }
         }
     }
 
     private void linkFlow() {
-        String code = ConsoleIO.readLine("Drug code: ");
-        String supId = ConsoleIO.readLine("Supplier ID: ");
-        int mode = ConsoleIO.readIntInRange("1) Link  2) Unlink: ", 1, 2);
+        String code = ConsoleIO.readLineOrCancel("Drug code");
+        if (code == null) { ConsoleIO.println("Cancelled."); return; }
+        String supId = ConsoleIO.readLineOrCancel("Supplier ID");
+        if (supId == null) { ConsoleIO.println("Cancelled."); return; }
+        int mode = ConsoleIO.readIntInRange("1) Link  2) Unlink  0) Cancel: ", 0, 2);
+        if (mode == 0) { ConsoleIO.println("Cancelled."); return; }
         if (mode == 1) drugs.linkDrugToSupplier(code, supId);
         else drugs.unlinkDrugFromSupplier(code, supId);
         drugStore.saveAll(drugs.all());
@@ -148,7 +198,9 @@ public final class DrugScreen extends Screen {
         for (int i = 0; i < list.size(); i++) {
             Drug d = list.get(i);
             ConsoleIO.println(String.format("%-12s %-28s %8.2f %8d %12s %8d",
-                    d.getCode(), d.getName(), d.getPrice(), d.getStock(), d.getExpiry(), d.getReorderThreshold()));
+                    d.getCode(), d.getName(), d.getPrice(), d.getStock(),
+                    d.getExpiry()==null?"":d.getExpiry().toString(),
+                    d.getReorderThreshold()));
         }
     }
 }

@@ -1,58 +1,43 @@
 package atinka.storage;
 
-/**
- * Minimal CSV (pipe) codec without java.util.
- * Escapes '|' and '\\' using a leading backslash.
- */
-public final class CsvCodec {
-    private CsvCodec() {}
+final class CsvCodec {
+    static final char SEP = '|';
 
-    public static String join(String... fields) {
+    static String join(String[] parts) {
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < fields.length; i++) {
-            if (i > 0) sb.append('|');
-            sb.append(escape(fields[i] == null ? "" : fields[i]));
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) sb.append(SEP);
+            String s = parts[i] == null ? "" : parts[i];
+            // escape separators and newlines
+            for (int j = 0; j < s.length(); j++) {
+                char c = s.charAt(j);
+                if (c == '\n' || c == '\r') continue;
+                if (c == SEP || c == '\\') { sb.append('\\'); }
+                sb.append(c);
+            }
         }
         return sb.toString();
     }
 
-    public static String[] split(String line) {
-        String[] parts = new String[8];
-        int count = 0;
-        StringBuilder cur = new StringBuilder();
+    static String[] split(String line, int expectedCols) {
+        if (line == null) return new String[expectedCols];
+        String[] out = new String[expectedCols];
+        int idx = 0; StringBuilder cur = new StringBuilder();
         boolean esc = false;
-        for (int i = 0; i < line.length(); i++) {
-            char c = line.charAt(i);
-            if (esc) { cur.append(c); esc = false; continue; }
-            if (c == '\\') { esc = true; continue; }
-            if (c == '|') {
-                if (count == parts.length) parts = grow(parts);
-                parts[count++] = cur.toString();
-                cur.setLength(0);
-            } else {
+        for (int i=0;i<line.length();i++){
+            char c=line.charAt(i);
+            if (esc) { cur.append(c); esc=false; continue; }
+            if (c=='\\'){ esc=true; continue; }
+            if (c==SEP){
+                if (idx<expectedCols) out[idx]=cur.toString(); // else drop overflow
+                cur.setLength(0); idx++;
+            } else if (c!='\n' && c!='\r'){
                 cur.append(c);
             }
         }
-        if (count == parts.length) parts = grow(parts);
-        parts[count++] = cur.toString();
-        String[] out = new String[count];
-        for (int i = 0; i < count; i++) out[i] = parts[i];
+        if (idx<expectedCols) out[idx]=cur.toString();
+        // fill missing
+        for (int i=0;i<expectedCols;i++) if (out[i]==null) out[i]="";
         return out;
-    }
-
-    private static String escape(String s) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == '|' || c == '\\') sb.append('\\');
-            sb.append(c);
-        }
-        return sb.toString();
-    }
-
-    private static String[] grow(String[] a) {
-        String[] b = new String[a.length << 1];
-        for (int i = 0; i < a.length; i++) b[i] = a[i];
-        return b;
     }
 }

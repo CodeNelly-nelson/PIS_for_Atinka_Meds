@@ -15,20 +15,24 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-/** Generates a performance report using ONLY custom DS/algorithms. */
+/**
+ * Algorithm performance report (uses only custom DS/algorithms on the data you have).
+ * Make sure this class lives in a file named PerformanceReport.java.
+ */
 public final class PerformanceReport {
     private PerformanceReport() {}
 
+    /** Entry point used by ReportScreen. */
     public static Path generate(DrugService drugs) {
         StringBuilder out = new StringBuilder();
-        Vec<Drug> data = drugs.all(); // copy from service (custom Vec)
+        Vec<Drug> data = drugs.all(); // custom Vec copy
 
         out.append("Atinka Meds — Algorithm Performance Report\n");
         out.append("Generated: ").append(LocalDateTime.now()).append("\n\n");
         out.append("Data snapshot\n");
         out.append("- Drug count: ").append(data.size()).append("\n\n");
 
-        // Sorting (by NAME)
+        // ---------------- Sorting (by NAME) ----------------
         out.append("Sorting (by name)\n");
         if (data.size() == 0) {
             out.append("No data to sort.\n\n");
@@ -39,7 +43,7 @@ public final class PerformanceReport {
             shuffleVec(copy1);
             Metrics mIns = new Metrics();
             Stopwatch sw1 = Stopwatch.startNew();
-            InsertionSort.sort(copy1, new CountingComparator<>(byName, mIns)); // count comparisons only
+            InsertionSort.sort(copy1, new CountingComparator<>(byName, mIns));
             mIns.setNanos(sw1.stopNanos());
 
             Vec<Drug> copy2 = copyOf(data);
@@ -49,17 +53,15 @@ public final class PerformanceReport {
             MergeSort.sort(copy2, new CountingComparator<>(byName, mMer));
             mMer.setNanos(sw2.stopNanos());
 
-            out.append(fmt2("- InsertionSort: comparisons=%d, time=%.3f ms\n",
-                    mIns.getComparisons(), mIns.millis()));
-            out.append(fmt2("- MergeSort:     comparisons=%d, time=%.3f ms\n\n",
-                    mMer.getComparisons(), mMer.millis()));
+            out.append(line2("- InsertionSort: comparisons=%d, time=%.3f ms\n", mIns.getComparisons(), mIns.millis()));
+            out.append(line2("- MergeSort:     comparisons=%d, time=%.3f ms\n\n", mMer.getComparisons(), mMer.millis()));
 
             out.append("Theoretical\n");
             out.append("- InsertionSort:  O(n^2) worst, Ω(n) best (nearly-sorted).\n");
             out.append("- MergeSort:      O(n log n) time, Ω(n log n); stable; O(n) extra space.\n\n");
         }
 
-        // Searching by CODE
+        // --------------- Searching by CODE -----------------
         out.append("Searching (by code)\n");
         if (data.size() == 0) {
             out.append("No data to search.\n\n");
@@ -82,19 +84,15 @@ public final class PerformanceReport {
             for (int i = 0; i < keys.length; i++) { drugs.indexByCode().get(keys[i]); }
             mHM.setNanos(swHM.stopNanos());
 
-            // two tokens: %d and %d
-            out.append(fmt2("- BinarySearch (on code): comparisons≈%d over %d lookups\n",
-                    mBin.getComparisons(), keys.length));
-            // three tokens: %d, %.3f, %d
-            out.append(fmtDfd("- HashMap lookup:        comparisons≈%d (N/A), time=%.3f ms over %d lookups\n\n",
-                    0, mHM.millis(), keys.length));
+            out.append(line2("- BinarySearch (on code): comparisons≈%d over %d lookups\n", mBin.getComparisons(), keys.length));
+            out.append(line2("- HashMap lookup:         time=%.3f ms over %d lookups\n\n", mHM.millis(), keys.length));
 
             out.append("Theoretical\n");
             out.append("- Binary search: O(log n), Ω(1) best; requires sorted data.\n");
             out.append("- Hash map:      O(1) average, O(n) worst with collisions.\n\n");
         }
 
-        // Searching: name contains (linear)
+        // --------------- Name contains (linear scan) ---------------
         out.append("Searching (name contains)\n");
         if (data.size() == 0) {
             out.append("No data to search.\n\n");
@@ -105,18 +103,19 @@ public final class PerformanceReport {
             Stopwatch sw = Stopwatch.startNew();
             int hits = 0;
             for (int i = 0; i < data.size(); i++) {
-                mLin.addComparisons(1);
+                mLin.addComparisons(1); // visited one element
                 Drug d = data.get(i);
                 if (indexOfIgnoreCase(d.getName(), term) >= 0) hits++;
             }
             mLin.setNanos(sw.stopNanos());
-            out.append(fmt3("- Linear scan: elements_visited=%d, hits=%d, time=%.3f ms\n\n",
+            out.append(line3("- Linear scan: elements_visited=%d, hits=%d, time=%.3f ms\n\n",
                     mLin.getComparisons(), hits, mLin.millis()));
 
             out.append("Theoretical\n");
             out.append("- Linear search: O(n) worst/avg, Ω(1) best if first item matches.\n\n");
         }
 
+        // --------------- DS notes ---------------
         out.append("Other structures (qualitative complexity)\n");
         out.append("- LinkedQueue enqueue/dequeue: O(1).\n");
         out.append("- LinkedStack push/pop:        O(1).\n");
@@ -129,7 +128,7 @@ public final class PerformanceReport {
         return ReportsFS.writeReport(out.toString());
     }
 
-    // ---------- helpers (no java.util) ----------
+    // ---------------- Helpers (no java.util collections) ----------------
 
     private static Vec<Drug> copyOf(Vec<Drug> v) {
         Vec<Drug> c = new Vec<>(v.size());
@@ -137,7 +136,7 @@ public final class PerformanceReport {
         return c;
     }
 
-    /** Fisher–Yates with generics (no wildcard) */
+    /** Fisher–Yates shuffle using Math.random(), in-place on Vec. (generic to avoid wildcard capture) */
     private static <T> void shuffleVec(Vec<T> v) {
         for (int i = v.size() - 1; i > 0; i--) {
             int j = (int)Math.floor(Math.random() * (i + 1));
@@ -163,14 +162,13 @@ public final class PerformanceReport {
     /** Case-insensitive substring search without java.util. */
     private static int indexOfIgnoreCase(String haystack, String needle) {
         if (needle == null || needle.length() == 0) return 0;
+        if (haystack == null) return -1;
         int n = haystack.length(), m = needle.length();
         for (int i = 0; i + m <= n; i++) {
-            int k = 0;
-            while (k < m) {
+            int k = 0; while (k < m) {
                 char a = toLower(haystack.charAt(i + k));
                 char b = toLower(needle.charAt(k));
-                if (a != b) break;
-                k++;
+                if (a != b) break; k++;
             }
             if (k == m) return i;
         }
@@ -178,61 +176,32 @@ public final class PerformanceReport {
     }
     private static char toLower(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c; }
 
-    /** Comparator wrapper that counts comparisons. */
+    // Counting comparator wrapper
     private static final class CountingComparator<T> implements Comparator<T> {
         private final Comparator<T> base; private final Metrics metrics;
         CountingComparator(Comparator<T> base, Metrics m){ this.base=base; this.metrics=m; }
         @Override public int compare(T a, T b){ metrics.addComparisons(1); return base.compare(a,b); }
     }
 
-    // ----- tiny formatters (no java.util.Formatter)
-
-    /** two tokens: %d and %.3f in any order */
-    private static String fmt2(String pattern, Object a, Object b) {
-        String s = pattern;
-        // try replace %d first; if not present, replace %.3f first — works for our usage
-        int i = s.indexOf("%d");
-        if (i >= 0) {
-            s = replaceOnce(s, "%d", String.valueOf(a));
-            s = replaceOnce(s, "%.3f", toFixed3(b));
-        } else {
-            s = replaceOnce(s, "%.3f", toFixed3(a));
-            s = replaceOnce(s, "%d", String.valueOf(b));
-        }
+    // Tiny format helpers (avoid java.util.Formatter)
+    private static String line2(String fmt, Object a, Object b) {
+        String s = fmt;
+        if (s.contains("%d")) s = s.replaceFirst("%d", String.valueOf(a));
+        if (s.contains("%.3f")) s = s.replaceFirst("%\\.3f", toFixed3(b));
+        else if (s.contains("%d")) s = s.replaceFirst("%d", String.valueOf(b));
         return s;
     }
-
-    /** three tokens in this order somewhere in the string: one %d, one %.3f, one %d */
-    private static String fmtDfd(String pattern, long d1, double f, long d2) {
-        String s = pattern;
-        s = replaceOnce(s, "%d", String.valueOf(d1));
-        s = replaceOnce(s, "%.3f", toFixed3(f));
-        s = replaceOnce(s, "%d", String.valueOf(d2));
+    private static String line3(String fmt, Object a, Object b, Object c) {
+        String s = fmt;
+        if (s.contains("%d")) s = s.replaceFirst("%d", String.valueOf(a));
+        if (s.contains("%d")) s = s.replaceFirst("%d", String.valueOf(b));
+        if (s.contains("%.3f")) s = s.replaceFirst("%\\.3f", toFixed3(c));
+        else if (s.contains("%d")) s = s.replaceFirst("%d", String.valueOf(c));
         return s;
-    }
-
-    /** three tokens for linear line: %d, %d, %.3f (in that order) */
-    private static String fmt3(String pattern, long d1, long d2, double f) {
-        String s = pattern;
-        s = replaceOnce(s, "%d", String.valueOf(d1));
-        s = replaceOnce(s, "%d", String.valueOf(d2));
-        s = replaceOnce(s, "%.3f", toFixed3(f));
-        return s;
-    }
-
-    private static String replaceOnce(String s, String token, String value) {
-        int p = s.indexOf(token); if (p < 0) return s;
-        return s.substring(0, p) + value + s.substring(p + token.length());
     }
     private static String toFixed3(Object v) {
-        double x = 0.0;
-        try { x = (v instanceof Number) ? ((Number)v).doubleValue() : Double.parseDouble(String.valueOf(v)); } catch (Exception ignored) {}
-        long m = Math.round(x * 1000.0);
-        String sign = m < 0 ? "-" : ""; if (m < 0) m = -m;
-        long i = m/1000; long f = m%1000;
-        StringBuilder sb = new StringBuilder();
-        sb.append(sign).append(i).append('.');
-        if (f<100) sb.append('0'); if (f<10) sb.append('0'); sb.append(f);
-        return sb.toString();
+        double x = 0.0; try { x = (v instanceof Number) ? ((Number)v).doubleValue() : Double.parseDouble(String.valueOf(v)); } catch (Exception ignored) {}
+        long m = Math.round(x * 1000.0); String sign = m < 0 ? "-" : ""; if (m < 0) m = -m; long i = m/1000; long f = m%1000;
+        StringBuilder sb = new StringBuilder(); sb.append(sign).append(i).append('.'); if (f<100) sb.append('0'); if (f<10) sb.append('0'); sb.append(f); return sb.toString();
     }
 }

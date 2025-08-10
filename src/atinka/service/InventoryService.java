@@ -2,6 +2,7 @@ package atinka.service;
 
 import atinka.dsa.*;
 import atinka.model.*;
+import atinka.util.DateUtil;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -27,9 +28,9 @@ public class InventoryService {
 
     // ---------- Transactions ----------
     public PurchaseTxn recordPurchase(String drugCode, int qty, String buyerId, double unitPrice) {
+        Validate.purchase(drugCode, qty, unitPrice);
         Drug d = drugService.getByCode(drugCode);
-        if (d == null) throw new IllegalArgumentException("Drug not found");
-        if (qty < 0) throw new IllegalArgumentException("qty>=0");
+        if (d == null) throw new IllegalStateException("Drug not found: " + drugCode);
         d.setStock(d.getStock() + qty);
         PurchaseTxn t = new PurchaseTxn(atinka.util.IdGen.nextPurchase(), drugCode, qty, buyerId, LocalDateTime.now(), unitPrice * qty);
         purchasesQ.enqueue(t); purchasesAll.add(t);
@@ -38,10 +39,10 @@ public class InventoryService {
     }
 
     public SaleTxn recordSale(String drugCode, int qty, String customerId) {
+        Validate.sale(drugCode, qty);
         Drug d = drugService.getByCode(drugCode);
-        if (d == null) throw new IllegalArgumentException("Drug not found");
-        if (qty <= 0) throw new IllegalArgumentException("qty>0");
-        if (d.isExpiredAt(LocalDate.now())) throw new IllegalStateException("Expired");
+        if (d == null) throw new IllegalStateException("Drug not found: " + drugCode);
+        if (DateUtil.isExpired(d.getExpiry(), LocalDate.now())) throw new IllegalStateException("Drug is expired");
         if (qty > d.getStock()) throw new IllegalStateException("Insufficient stock");
         d.setStock(d.getStock() - qty);
         SaleTxn t = new SaleTxn(atinka.util.IdGen.nextSale(), drugCode, qty, customerId, LocalDateTime.now(), d.getPrice() * qty);

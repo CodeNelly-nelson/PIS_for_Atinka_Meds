@@ -4,51 +4,73 @@ import atinka.model.SaleTxn;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 
-/** Append-only log for sales. */
-public class SaleLogCsv {
-    private final Path file = PathsFS.SALES_LOG;
+public final class SaleLogCsv {
+    private static final int COLS = 6; // id|drugCode|qty|timestamp|total|customerId
 
     public void append(SaleTxn t) {
-        try (BufferedWriter bw = Files.newBufferedWriter(file, StandardCharsets.UTF_8, StandardOpenOption.APPEND)) {
-            String line = CsvCodec.join(t.getId(), t.getDrugCode(), String.valueOf(t.getQty()), t.getCustomerId(),
-                    t.getTimestamp().toString(), String.valueOf(t.getTotal()));
-            bw.write(line); bw.newLine();
-        } catch (IOException e) { throw new RuntimeException(e); }
-    }
-
-    /** Reads entire log as a freshly allocated array (no java.util). */
-    public SaleTxn[] readAll() {
-        int count = 0;
-        try (BufferedReader br = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            while (true) { String line = br.readLine(); if (line == null) break; if (!line.isBlank()) count++; }
-        } catch (IOException e) { throw new RuntimeException(e); }
-        SaleTxn[] arr = new SaleTxn[count];
-        int i = 0;
-        try (BufferedReader br = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+        Path p = PathsFS.salesLogPath();
+        Path tmp = p.resolveSibling(p.getFileName().toString() + ".append.tmp");
+        try (BufferedWriter w = Files.newBufferedWriter(tmp)) {
+            String[] cols = new String[]{
+                    t.getId(), t.getDrugCode(),
+                    String.valueOf(t.getQty()),
+                    t.getTimestamp().toString(),
+                    String.valueOf(t.getTotal()),
+                    t.getCustomerId()==null?"":t.getCustomerId()
+            };
+            w.write(CsvCodec.join(cols));
+            w.newLine();
+        } catch (Exception ex) {
+            System.out.println("[WARN] Failed writing sales tmp: " + ex.getMessage());
+            return;
+        }
+        try {
             String line;
-            while ((line = br.readLine()) != null) {
-                if (line.isBlank()) continue;
-                String[] f = CsvCodec.split(line);
-                arr[i++] = new SaleTxn(
-                        f.length>0?f[0]:"",
-                        f.length>1?f[1]:"",
-                        f.length>2?parseIntSafe(f[2]):0,
-                        f.length>3?f[3]:"",
-                        f.length>4?LocalDateTime.parse(f[4]):LocalDateTime.now(),
-                        f.length>5?parseDoubleSafe(f[5]):0.0
-                );
+            try (BufferedReader r = Files.newBufferedReader(tmp);
+                 BufferedWriter w = Files.newBufferedWriter(p, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND)) {
+                while ((line = r.readLine()) != null) { w.write(line); w.newLine(); }
             }
-        } catch (IOException e) { throw new RuntimeException(e); }
-        return arr;
+            Files.deleteIfExists(tmp);
+        } catch (Exception ex) {
+            System.out.println("[WARN] Failed appending sales log: " + ex.getMessage());
+        }
     }
 
-    private static int parseIntSafe(String s){ try{ return Integer.parseInt(s);}catch(Exception e){return 0;} }
-    private static double parseDoubleSafe(String s){ try{ return Double.parseDouble(s);}catch(Exception e){return 0.0;} }
+    public SaleTxn[] readAll() {
+        Path p = PathsFS.salesLogPath();
+        if (!Files.exists(p)) return new SaleTxn[0];
+        // first pass: count
+        int count = 0;
+        try (BufferedReader r = Files.newBufferedReader(p)) {
+            while (r.readLine() != null) count++;
+        } catch (Exception ignored) {}
+        SaleTxn[] out = new SaleTxn[count];
+        int idx = 0;
+        try (BufferedReader r = Files.newBufferedReader(p)) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                String[] c = CsvCodec.split(line, COLS);
+                try {
+                    String id = c[0], code = c[1];
+                    int qty = Integer.parseInt(c[2]);
+                    LocalDateTime ts = LocalDateTime.parse(c[3]);
+                    double total = Double.parseDouble(c[4]);
+                    String cust = c[5];
+                    out[idx++] = new SaleTxn(id, code, qty, cust, ts, total);
+                } catch (Exception ignoreBadRow) { /* skip malformed */ }
+            }
+        } catch (Exception ex) {
+            System.out.println("[WARN] Failed reading sales log: " + ex.getMessage());
+        }
+        if (idx < out.length) {
+            SaleTxn[] shrunk = new SaleTxn[idx];
+            for (int i=0;i<idx;i++) shrunk[i] = out[i];
+            return shrunk;
+        }
+        return out;
+    }
 }

@@ -1,78 +1,100 @@
 package atinka.storage;
 
+import atinka.dsa.HashSetOpen;
 import atinka.dsa.Vec;
 import atinka.model.Drug;
+import atinka.util.DateUtil;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 
-/**
- * CSV persistence for Drug using only custom core collections.
- * Format per line: code|name|price|stock|expiry|threshold|supplierIds(;)
- */
-public class DrugCsvStore {
-    private final Path file = PathsFS.DRUGS;
+public final class DrugCsvStore {
+    private static final int COLS = 7; // code|name|price|stock|expiry|threshold|supplierIdsCSV
 
     public Vec<Drug> loadAll() {
-        Vec<Drug> list = new Vec<>();
-        try (BufferedReader br = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                if (line.isBlank()) continue;
-                String[] f = CsvCodec.split(line);
-                String code = f.length > 0 ? f[0] : "";
-                String name = f.length > 1 ? f[1] : "";
-                double price = f.length > 2 ? parseDoubleSafe(f[2]) : 0.0;
-                int stock = f.length > 3 ? parseIntSafe(f[3]) : 0;
-                LocalDate expiry = f.length > 4 ? LocalDate.parse(f[4]) : LocalDate.now();
-                int threshold = f.length > 5 ? parseIntSafe(f[5]) : 0;
-                Drug d = new Drug(code, name, price, stock, expiry, threshold);
-                if (f.length > 6 && f[6] != null && !f[6].isEmpty()) {
-                    String s = f[6]; int start = 0; int i;
-                    while (true) {
-                        i = s.indexOf(';', start);
-                        String tok = (i == -1) ? s.substring(start) : s.substring(start, i);
-                        if (!tok.isEmpty()) d.addSupplier(tok);
-                        if (i == -1) break; else start = i + 1;
+        Vec<Drug> out = new Vec<>();
+        Path p = PathsFS.drugsPath();
+        int skipped = 0;
+        try {
+            if (!Files.exists(p)) return out;
+            try (BufferedReader r = Files.newBufferedReader(p)) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (line.length() == 0) continue;
+                    String[] c = CsvCodec.split(line, COLS);
+                    String code = c[0], name = c[1];
+                    if (code.length()==0 || name.length()==0) { skipped++; continue; }
+                    double price = 0.0; try { price = Double.parseDouble(c[2]); } catch (Exception ignored) {}
+                    int stock = 0;      try { stock = Integer.parseInt(c[3]); } catch (Exception ignored) {}
+                    LocalDate expiry = DateUtil.parseDateOrNull(c[4]);
+                    int thresh = 0;     try { thresh = Integer.parseInt(c[5]); } catch (Exception ignored) {}
+                    Drug d = new Drug(code, name, price, stock, expiry, thresh);
+                    // parse suppliers CSV (comma-separated)
+                    if (c[6].length() > 0) {
+                        String ids = c[6];
+                        String cur = "";
+                        for (int i = 0; i < ids.length(); i++) {
+                            char ch = ids.charAt(i);
+                            if (ch == ',') {
+                                if (cur.length() > 0) { d.addSupplier(cur); cur = ""; }
+                            } else { cur += ch; }
+                        }
+                        if (cur.length() > 0) d.addSupplier(cur);
                     }
+                    out.add(d);
                 }
-                list.add(d);
             }
-        } catch (IOException e) { throw new RuntimeException(e); }
-        return list;
+        } catch (Exception ex) {
+            System.out.println("[WARN] Failed reading drugs: " + ex.getMessage());
+        }
+        if (skipped > 0) System.out.println("[WARN] Skipped " + skipped + " malformed drug row(s).");
+        return out;
     }
 
-    public void saveAll(Vec<Drug> drugs) {
-        try (BufferedWriter bw = Files.newBufferedWriter(file, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING)) {
-            for (int idx = 0; idx < drugs.size(); idx++) {
-                Drug d = drugs.get(idx);
-                String suppliers = joinSuppliers(d);
-                String line = CsvCodec.join(
-                        d.getCode(), d.getName(), String.valueOf(d.getPrice()), String.valueOf(d.getStock()),
-                        d.getExpiry().toString(), String.valueOf(d.getReorderThreshold()), suppliers
-                );
-                bw.write(line); bw.newLine();
-            }
-        } catch (IOException e) { throw new RuntimeException(e); }
-    }
+    public void saveAll(Vec<Drug> all) {
+        Path p = PathsFS.drugsPath();
+        Path tmp = p.resolveSibling(p.getFileName().toString() + ".tmp");
+        Path bak = p.resolveSibling(p.getFileName().toString() + ".bak");
+        try (BufferedWriter w = Files.newBufferedWriter(tmp)) {
+            for (int i = 0; i < all.size(); i++) {
+                Drug d = all.get(i);
 
-    private static int parseIntSafe(String s) { try { return Integer.parseInt(s); } catch (Exception e) { return 0; } }
-    private static double parseDoubleSafe(String s) { try { return Double.parseDouble(s); } catch (Exception e) { return 0.0; } }
+                // build supplier CSV safely without java.util
+                final StringBuilder sups = new StringBuilder();
+                final boolean[] first = new boolean[]{true};
+                HashSetOpen ids = d.getSupplierIds();
+                if (ids != null) {
+                    ids.forEach(s -> {
+                        if (!first[0]) sups.append(',');
+                        sups.append(s);
+                        first[0] = false;
+                    });
+                }
 
-    private static String joinSuppliers(Drug d) {
-        final StringBuilder sb = new StringBuilder();
-        d.getSupplierIds().forEach(s -> {
-            if (s != null && !s.isEmpty()) {
-                if (sb.length() > 0) sb.append(';');
-                sb.append(s);
+                String[] cols = new String[]{
+                        d.getCode(),
+                        d.getName(),
+                        String.valueOf(d.getPrice()),
+                        String.valueOf(d.getStock()),
+                        d.getExpiry()==null? "" : d.getExpiry().toString(),
+                        String.valueOf(d.getReorderThreshold()),
+                        sups.toString()
+                };
+                w.write(CsvCodec.join(cols));
+                w.newLine();
             }
-        });
-        return sb.toString();
+        } catch (Exception ex) {
+            System.out.println("[WARN] Failed writing tmp drugs: " + ex.getMessage());
+            return;
+        }
+        try {
+            if (Files.exists(p)) Files.copy(p, bak, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.move(tmp, p, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (Exception moveEx) {
+            try { Files.move(tmp, p, java.nio.file.StandardCopyOption.REPLACE_EXISTING); } catch (Exception ignore) {}
+        }
     }
 }

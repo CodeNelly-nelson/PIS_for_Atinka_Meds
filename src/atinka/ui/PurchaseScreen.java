@@ -40,26 +40,43 @@ public final class PurchaseScreen extends Screen {
     }
 
     private void add(){
-        String code=ConsoleIO.readLine("Drug code: ");
-        int qty=ConsoleIO.readIntInRange("Quantity: ",0,Integer.MAX_VALUE);
-        String buyer=ConsoleIO.readLine("Buyer ID: ");
-        double unit=ConsoleIO.readPositiveDouble("Unit price for this purchase: ");
-        PurchaseTxn t=inventory.recordPurchase(code, qty, buyer, unit);
-        log.append(t);
-        // persist stock changes using the drug service snapshot
-        drugStore.saveAll(drugs.all());
-        ConsoleIO.println("Recorded & saved purchase: "+t);
+        try {
+            String code=ConsoleIO.readLineOrCancel("Drug code");
+            if (code==null) { ConsoleIO.println("Cancelled."); return; }
 
-        // hint for alerts
-        Vec<?> alerts = inventory.belowThreshold();
-        if (alerts.size() > 0) ConsoleIO.println("Note: some items are below threshold. See Stock Monitor.");
+            int qty=ConsoleIO.readIntOrCancel("Quantity");
+            if (qty==Integer.MIN_VALUE) { ConsoleIO.println("Cancelled."); return; }
+
+            String buyer=ConsoleIO.readLineOrCancel("Buyer ID");
+            if (buyer==null) { ConsoleIO.println("Cancelled."); return; }
+
+            double unit=ConsoleIO.readPositiveDoubleOrCancel("Unit price for this purchase");
+            if (unit==Double.NEGATIVE_INFINITY) { ConsoleIO.println("Cancelled."); return; }
+
+            PurchaseTxn t=inventory.recordPurchase(code, qty, buyer, unit);
+            log.append(t);
+            drugStore.saveAll(drugs.all());
+            ConsoleIO.println("Recorded & saved purchase: "+t);
+            if (inventory.belowThreshold().size() > 0)
+                ConsoleIO.println("Note: some items are below threshold. See Stock Monitor.");
+        } catch (Exception ex) {
+            ConsoleIO.println("Error: " + ex.getMessage());
+        }
     }
 
     private void latest5(){
-        String code=ConsoleIO.readLine("Drug code: ");
+        String code=ConsoleIO.readLineOrCancel("Drug code");
+        if (code==null) { ConsoleIO.println("Cancelled."); return; }
         Vec<PurchaseTxn> sortedDesc = inventory.purchasesForDrugSortedByTime(code, false);
         if(sortedDesc==null || sortedDesc.size()==0){ ConsoleIO.println("No purchases for this drug."); return; }
+
+        ConsoleIO.println(String.format("%-12s %-10s %-22s %-10s %-10s",
+                "TXN_ID","QTY","TIMESTAMP","BUYER_ID","TOTAL"));
         int limit = sortedDesc.size() < 5 ? sortedDesc.size() : 5;
-        for(int i=0;i<limit;i++) ConsoleIO.println(sortedDesc.get(i).toString());
+        for(int i=0;i<limit;i++) {
+            PurchaseTxn p = sortedDesc.get(i);
+            ConsoleIO.println(String.format("%-12s %-10d %-22s %-10s %-10.2f",
+                    p.getId(), p.getQty(), p.getTimestamp()==null?"":p.getTimestamp().toString(), p.getBuyerId(), p.getTotal()));
+        }
     }
 }

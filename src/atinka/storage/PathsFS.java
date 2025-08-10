@@ -1,31 +1,49 @@
 package atinka.storage;
 
-import java.io.IOException;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
-/** Centralizes filesystem paths and ensures directories exist. */
+/** Central file-system paths + bootstrap for data directory. */
 public final class PathsFS {
-    public static final Path ROOT = Path.of("data");
-    public static final Path DRUGS = ROOT.resolve("drugs.csv");
-    public static final Path SUPPLIERS = ROOT.resolve("suppliers.csv");
-    public static final Path CUSTOMERS = ROOT.resolve("customers.csv");
-    public static final Path PURCHASE_LOG = ROOT.resolve("purchase_log.csv");
-    public static final Path SALES_LOG = ROOT.resolve("sales_log.csv");
-    public static final Path REPORTS_DIR = ROOT.resolve("reports");
+    private PathsFS(){}
 
-    private PathsFS() {}
+    // Root data dir: ./data
+    public static Path dataRoot() { return Path.of("data"); }
 
+    // Leaf files/dirs
+    public static Path drugsPath()        { return dataRoot().resolve("drugs.csv"); }
+    public static Path suppliersPath()    { return dataRoot().resolve("suppliers.csv"); }
+    public static Path customersPath()    { return dataRoot().resolve("customers.csv"); }
+    public static Path purchaseLogPath()  { return dataRoot().resolve("purchase_log.csv"); }
+    public static Path salesLogPath()     { return dataRoot().resolve("sales_log.csv"); }
+    public static Path reportsDir()       { return dataRoot().resolve("reports"); }
+
+    /** Ensure folders exist and the core CSV files are present. */
     public static void ensure() {
         try {
-            Files.createDirectories(ROOT);
-            if (Files.notExists(DRUGS)) Files.createFile(DRUGS);
-            if (Files.notExists(SUPPLIERS)) Files.createFile(SUPPLIERS);
-            if (Files.notExists(CUSTOMERS)) Files.createFile(CUSTOMERS);
-            if (Files.notExists(PURCHASE_LOG)) Files.createFile(PURCHASE_LOG);
-            if (Files.notExists(SALES_LOG)) Files.createFile(SALES_LOG);
-            Files.createDirectories(REPORTS_DIR);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to init data folder", e);
+            // directories
+            if (!Files.exists(dataRoot()))  Files.createDirectories(dataRoot());
+            if (!Files.exists(reportsDir())) Files.createDirectories(reportsDir());
+
+            // files (touch if missing)
+            touchIfMissing(drugsPath());
+            touchIfMissing(suppliersPath());
+            touchIfMissing(customersPath());
+            touchIfMissing(purchaseLogPath());
+            touchIfMissing(salesLogPath());
+        } catch (Exception e) {
+            System.out.println("[WARN] Failed to ensure data directories/files: " + e.getMessage());
+        }
+    }
+
+    private static void touchIfMissing(Path p) {
+        try {
+            if (!Files.exists(p)) {
+                Files.writeString(p, "", StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            }
+        } catch (Exception e) {
+            System.out.println("[WARN] Failed to create " + p + ": " + e.getMessage());
         }
     }
 }

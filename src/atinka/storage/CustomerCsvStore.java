@@ -5,39 +5,57 @@ import atinka.model.Customer;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 
-/** CSV store for Customer using custom Vec. */
-public class CustomerCsvStore {
-    private final Path file = PathsFS.CUSTOMERS;
+public final class CustomerCsvStore {
+    private static final int COLS = 3; // id|name|contact
 
     public Vec<Customer> loadAll() {
-        Vec<Customer> list = new Vec<>();
-        try (BufferedReader br = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                if (line.isBlank()) continue;
-                String[] f = CsvCodec.split(line);
-                String id = f.length>0?f[0]:"";
-                String name = f.length>1?f[1]:"";
-                String contact = f.length>2?f[2]:"";
-                list.add(new Customer(id, name, contact));
+        Vec<Customer> out = new Vec<>();
+        Path p = PathsFS.customersPath();
+        int skipped = 0;
+        try {
+            if (!Files.exists(p)) return out;
+            try (BufferedReader r = Files.newBufferedReader(p)) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (line.length() == 0) continue;
+                    String[] c = CsvCodec.split(line, COLS);
+                    String id=c[0], name=c[1];
+                    if (id.length()==0 || name.length()==0) { skipped++; continue; }
+                    String contact=c[2];
+                    Customer cu = new Customer(id,name,contact);
+                    out.add(cu);
+                }
             }
-        } catch (IOException e) { throw new RuntimeException(e); }
-        return list;
+        } catch (Exception ex) {
+            System.out.println("[WARN] Failed reading customers: " + ex.getMessage());
+        }
+        if (skipped > 0) System.out.println("[WARN] Skipped " + skipped + " malformed customer row(s).");
+        return out;
     }
 
-    public void saveAll(Vec<Customer> items) {
-        try (BufferedWriter bw = Files.newBufferedWriter(file, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING)) {
-            for (int i = 0; i < items.size(); i++) {
-                Customer c = items.get(i);
-                String line = CsvCodec.join(c.getId(), c.getName(), c.getContact());
-                bw.write(line); bw.newLine();
+    public void saveAll(Vec<Customer> all) {
+        Path p = PathsFS.customersPath();
+        Path tmp = p.resolveSibling(p.getFileName().toString() + ".tmp");
+        Path bak = p.resolveSibling(p.getFileName().toString() + ".bak");
+        try (BufferedWriter w = Files.newBufferedWriter(tmp)) {
+            for (int i = 0; i < all.size(); i++) {
+                Customer c = all.get(i);
+                String[] cols = new String[]{ c.getId(), c.getName(), c.getContact() };
+                w.write(CsvCodec.join(cols));
+                w.newLine();
             }
-        } catch (IOException e) { throw new RuntimeException(e); }
+        } catch (Exception ex) {
+            System.out.println("[WARN] Failed writing tmp customers: " + ex.getMessage());
+            return;
+        }
+        try {
+            if (Files.exists(p)) Files.copy(p, bak, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.move(tmp, p, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (Exception moveEx) {
+            try { Files.move(tmp, p, java.nio.file.StandardCopyOption.REPLACE_EXISTING); } catch (Exception ignore) {}
+        }
     }
 }

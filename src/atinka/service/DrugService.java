@@ -10,11 +10,15 @@ public class DrugService {
     private final HashMapOpen<HashSetOpen> supplierToDrugs = new HashMapOpen<>(); // supplierId -> set(drugCode)
 
     public boolean addDrug(Drug d) {
-        if (d == null || d.getCode() == null) return false;
+        Validate.drugNew(d);
         if (byCode.get(d.getCode()) != null) return false;
         drugs.add(d);
         byCode.put(d.getCode(), d);
-        d.getSupplierIds().forEach(sup -> linkDrugToSupplier(d.getCode(), sup)); // seed reverse index
+        // seed reverse index
+        HashSetOpen sups = d.getSupplierIds();
+        if (sups != null) {
+            sups.forEach(sup -> linkDrugToSupplier(d.getCode(), sup));
+        }
         return true;
     }
 
@@ -30,7 +34,7 @@ public class DrugService {
     }
 
     public boolean updateDrug(Drug u) {
-        if (u == null || u.getCode() == null) return false;
+        Validate.drugUpdate(u);
         Drug ex = byCode.get(u.getCode());
         if (ex == null) return false;
         ex.setName(u.getName());

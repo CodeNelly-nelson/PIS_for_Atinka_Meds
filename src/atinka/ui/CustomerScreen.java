@@ -17,11 +17,15 @@ public final class CustomerScreen extends Screen {
             ConsoleIO.printHeader("Customers");
             ConsoleIO.println("1) Add customer");
             ConsoleIO.println("2) List customers");
+            ConsoleIO.println("3) Update customer");
+            ConsoleIO.println("4) Remove customer");
             ConsoleIO.println("0) Back\n");
-            int c=ConsoleIO.readIntInRange("Choose: ",0,2);
+            int c=ConsoleIO.readIntInRange("Choose: ",0,4);
             switch(c){
                 case 1 -> add();
                 case 2 -> list(svc.all());
+                case 3 -> update();
+                case 4 -> remove();
                 case 0 -> back=true;
             }
             if(!back) ConsoleIO.readLine("\nPress ENTER...");
@@ -29,11 +33,41 @@ public final class CustomerScreen extends Screen {
     }
 
     private void add(){
-        String name=ConsoleIO.readLine("Name: ");
-        String contact=ConsoleIO.readLine("Contact: ");
+        String name=ConsoleIO.readLineOrCancel("Name");
+        if (name==null) { ConsoleIO.println("Cancelled."); return; }
+        String contact=ConsoleIO.readLineOrCancel("Contact");
+        if (contact==null) { ConsoleIO.println("Cancelled."); return; }
         Customer cu=svc.create(name, contact);
         store.saveAll(svc.all());
         ConsoleIO.println("Added customer: "+cu.getId());
+    }
+
+    private void update() {
+        String id = ConsoleIO.readLineOrCancel("Customer ID");
+        if (id==null) { ConsoleIO.println("Cancelled."); return; }
+        Customer existing = svc.get(id);
+        if (existing == null) { ConsoleIO.println("Not found."); return; }
+        String name = ConsoleIO.readLine("Name ["+existing.getName()+"]: ");
+        if (!name.isEmpty()) existing.setName(name);
+        String contact = ConsoleIO.readLine("Contact ["+existing.getContact()+"]: ");
+        if (!contact.isEmpty()) existing.setContact(contact);
+        if (svc.update(existing)) {
+            store.saveAll(svc.all());
+            ConsoleIO.println("Updated & saved.");
+        } else {
+            ConsoleIO.println("Update failed.");
+        }
+    }
+
+    private void remove() {
+        String id = ConsoleIO.readLineOrCancel("Customer ID");
+        if (id==null) { ConsoleIO.println("Cancelled."); return; }
+        if (svc.remove(id)) {
+            store.saveAll(svc.all());
+            ConsoleIO.println("Removed & saved.");
+        } else {
+            ConsoleIO.println("Not found; nothing removed.");
+        }
     }
 
     private void list(Vec<Customer> v){
