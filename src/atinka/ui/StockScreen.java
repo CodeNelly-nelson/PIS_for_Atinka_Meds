@@ -4,67 +4,82 @@ import atinka.dsa.Vec;
 import atinka.model.Drug;
 import atinka.service.InventoryService;
 import atinka.util.ConsoleIO;
+import atinka.util.Tui;
+import atinka.util.Ansi;
 
-/** Stock monitor screen — all prompts support 0 = cancel. */
 public final class StockScreen extends Screen {
     private final InventoryService inventory;
-    public StockScreen(InventoryService inv){ this.inventory=inv; }
 
-    @Override public void run() {
+    public StockScreen(InventoryService inventory){
+        this.inventory = inventory;
+    }
+
+    @Override public void run(){
         boolean back=false;
         while(!back){
             ConsoleIO.clearScreen();
             ConsoleIO.printHeader("Stock Monitor");
-            ConsoleIO.println("1) Show low-stock (Top N)");
-            ConsoleIO.println("2) Show items below threshold");
-            ConsoleIO.println("0) Back\n");
-            int c=ConsoleIO.readIntInRange("Choose: ",0,2);
-            switch(c){
+            System.out.println("1) Show low-stock (Top N)");
+            System.out.println("2) List all below threshold");
+            System.out.println("0) Back\n");
+
+            int c = ConsoleIO.readIntInRange("Choose", 0, 2);
+            switch (c){
                 case 1 -> topN();
                 case 2 -> belowThreshold();
-                case 0 -> back=true;
+                case 0 -> back = true;
             }
             if(!back) ConsoleIO.readLine("\nPress ENTER...");
         }
     }
 
     private void topN(){
-        int n = ConsoleIO.readIntOrCancel("How many items?");
-        if (n == Integer.MIN_VALUE) { ConsoleIO.println("Cancelled."); return; }
-        if (n <= 0) { ConsoleIO.println("Enter a positive number."); return; }
-        try {
-            Vec<Drug> list=inventory.lowStockTopN(n);
-            render(list, false);
-        } catch (Exception ex) {
-            ConsoleIO.println("Error: " + ex.getMessage());
-        }
+        int n = ConsoleIO.readIntOrCancel("N (how many)");
+        if (n == Integer.MIN_VALUE) { Tui.toastInfo("Cancelled."); return; }
+        Vec<Drug> v = inventory.lowStockTopN(n);
+        if (v == null || v.size() == 0){ Tui.toastInfo("No items."); return; }
+
+        Tui.breadcrumb("Stock › Top " + n + " Lowest");
+        Tui.table(
+                new String[]{"CODE","NAME","STOCK","THRESH"},
+                new int[]{12,30,8,8},
+                new Tui.RowProvider(){
+                    int i=0;
+                    @Override public String[] nextRow(int idx){
+                        if (i >= v.size()) return null;
+                        Drug d = v.get(i++);
+                        return new String[]{ d.getCode(), d.getName(),
+                                String.valueOf(d.getStock()),
+                                String.valueOf(d.getReorderThreshold()) };
+                    }
+                    @Override public String rowColor(int idx) {
+                        Drug d = v.get(idx);
+                        if (d.getStock() <= 0) return Ansi.FG_RED;
+                        if (d.getStock() < d.getReorderThreshold()) return Ansi.FG_YELLOW;
+                        return null;
+                    }
+                }
+        );
     }
 
     private void belowThreshold(){
-        try {
-            Vec<Drug> list=inventory.belowThreshold();
-            render(list, true);
-        } catch (Exception ex) {
-            ConsoleIO.println("Error: " + ex.getMessage());
-        }
-    }
-
-    private void render(Vec<Drug> list, boolean withThresh){
-        if(list==null || list.size()==0){ ConsoleIO.println("No data."); return; }
-        if(withThresh){
-            ConsoleIO.println(String.format("%-12s %-28s %8s %8s %8s","CODE","NAME","STOCK","THRESH","PRICE"));
-            for(int i=0;i<list.size();i++){
-                Drug d=list.get(i);
-                ConsoleIO.println(String.format("%-12s %-28s %8d %8d %8.2f",
-                        d.getCode(), d.getName(), d.getStock(), d.getReorderThreshold(), d.getPrice()));
-            }
-        }else{
-            ConsoleIO.println(String.format("%-12s %-28s %8s %8s","CODE","NAME","PRICE","STOCK"));
-            for(int i=0;i<list.size();i++){
-                Drug d=list.get(i);
-                ConsoleIO.println(String.format("%-12s %-28s %8.2f %8d",
-                        d.getCode(), d.getName(), d.getPrice(), d.getStock()));
-            }
-        }
+        Vec<Drug> v = inventory.belowThreshold();
+        if (v == null || v.size() == 0){ Tui.toastInfo("All items are at healthy levels."); return; }
+        Tui.breadcrumb("Stock › Below Threshold");
+        Tui.table(
+                new String[]{"CODE","NAME","STOCK","THRESH"},
+                new int[]{12,30,8,8},
+                new Tui.RowProvider(){
+                    int i=0;
+                    @Override public String[] nextRow(int idx){
+                        if (i >= v.size()) return null;
+                        Drug d = v.get(i++);
+                        return new String[]{ d.getCode(), d.getName(),
+                                String.valueOf(d.getStock()),
+                                String.valueOf(d.getReorderThreshold()) };
+                    }
+                    @Override public String rowColor(int idx) { return Ansi.FG_YELLOW; }
+                }
+        );
     }
 }

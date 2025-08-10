@@ -1,12 +1,14 @@
 package atinka.ui;
 
 import atinka.util.ConsoleIO;
+import atinka.util.Tui;
+import atinka.util.Ansi;
+
 import atinka.service.*;
 import atinka.storage.*;
 import atinka.dsa.Vec;
 import atinka.model.Drug;
 
-/** Top-level router for the terminal app. */
 public final class Router {
     private final DrugService drugs;
     private final SupplierService suppliers;
@@ -34,9 +36,11 @@ public final class Router {
     }
 
     public void run() {
+        welcome();
         boolean running = true;
+
         DrugScreen drugScreen = new DrugScreen(drugs, inventory, drugStore);
-        SupplierScreen supplierScreen = new SupplierScreen(suppliers, supplierStore, drugs); // <- pass DrugService
+        SupplierScreen supplierScreen = new SupplierScreen(suppliers, supplierStore, drugs);
         CustomerScreen customerScreen = new CustomerScreen(customers, customerStore);
         PurchaseScreen purchaseScreen = new PurchaseScreen(drugs, inventory, purchaseLog, drugStore);
         SalesScreen salesScreen = new SalesScreen(drugs, inventory, saleLog, drugStore);
@@ -45,17 +49,20 @@ public final class Router {
 
         while (running) {
             ConsoleIO.clearScreen();
-            ConsoleIO.printHeader("Atinka Meds — Pharmacy Inventory (CLI)");
+            ConsoleIO.printHeader("Pharmacy Inventory (CLI)");
             showAlerts();
-            ConsoleIO.println("1) Drugs");
-            ConsoleIO.println("2) Suppliers");
-            ConsoleIO.println("3) Customers");
-            ConsoleIO.println("4) Purchases");
-            ConsoleIO.println("5) Sales");
-            ConsoleIO.println("6) Stock Monitor");
-            ConsoleIO.println("7) Reports");
-            ConsoleIO.println("0) Exit\n");
-            int c = ConsoleIO.readIntInRange("Choose an option: ", 0, 7);
+
+            System.out.println(Ansi.color("  [1] Drugs", Ansi.FG_WHITE));
+            System.out.println(Ansi.color("  [2] Suppliers", Ansi.FG_WHITE));
+            System.out.println(Ansi.color("  [3] Customers", Ansi.FG_WHITE));
+            System.out.println(Ansi.color("  [4] Purchases", Ansi.FG_WHITE));
+            System.out.println(Ansi.color("  [5] Sales", Ansi.FG_WHITE));
+            System.out.println(Ansi.color("  [6] Stock Monitor", Ansi.FG_WHITE));
+            System.out.println(Ansi.color("  [7] Reports", Ansi.FG_WHITE));
+            System.out.println(Ansi.color("  [0] Exit", Ansi.FG_WHITE));
+            Tui.status("Tips: Use numbers to navigate. In prompts: ENTER=cancel, 0=cancel. Colors highlight warnings and success.");
+
+            int c = ConsoleIO.readIntInRange("Choose an option", 0, 7);
             switch (c) {
                 case 1 -> drugScreen.run();
                 case 2 -> supplierScreen.run();
@@ -65,28 +72,31 @@ public final class Router {
                 case 6 -> stockScreen.run();
                 case 7 -> reportScreen.run();
                 case 0 -> {
-                    Boolean confirm = ConsoleIO.readYesNoOrCancel("Exit the application?");
-                    if (confirm == null) {
-                        ConsoleIO.println("Cancelled. Returning to menu...");
-                        ConsoleIO.readLine("\nPress ENTER...");
-                    } else if (confirm.booleanValue()) {
-                        running = false;
-                    }
+                    Boolean ok = ConsoleIO.readYesNoOrCancel("Exit the application?");
+                    if (ok != null && ok.booleanValue()) running = false;
                 }
             }
         }
     }
 
+    private void welcome() {
+        ConsoleIO.clearScreen();
+        Tui.banner("Atinka Meds", "Adenta, Accra • Offline-first Pharmacy System");
+        Tui.spinner("Loading data", 14, 30);
+        System.out.println();
+    }
+
     private void showAlerts() {
         Vec<Drug> low = inventory.belowThreshold();
         if (low != null && low.size() > 0) {
-            ConsoleIO.println("⚠ Low stock alerts:");
+            System.out.println(Ansi.color("⚠ Low stock alerts:", Ansi.FG_YELLOW, Ansi.BOLD));
             for (int i = 0; i < low.size(); i++) {
                 Drug d = low.get(i);
-                ConsoleIO.println("  - " + d.getCode() + " (" + d.getName() + "): " +
-                        d.getStock() + " < threshold " + d.getReorderThreshold());
+                String line = "  - " + d.getCode() + " (" + d.getName() + "): "
+                        + d.getStock() + " < threshold " + d.getReorderThreshold();
+                System.out.println(Ansi.color(line, Ansi.FG_YELLOW));
             }
-            ConsoleIO.println("");
+            System.out.println();
         }
     }
 }
