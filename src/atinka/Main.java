@@ -1,56 +1,70 @@
 package atinka;
 
-import atinka.util.ConsoleIO;
-import atinka.storage.*;
 import atinka.service.*;
-import atinka.model.*;
-import atinka.dsa.Vec;
+import atinka.storage.*;
 import atinka.ui.Router;
 
-public final class Main {
-    private Main() {}
+import atinka.dsa.Vec;
+import atinka.model.Drug;
+import atinka.model.Supplier;
+import atinka.model.Customer;
 
+public final class Main {
     public static void main(String[] args) {
         try {
+            // Ensure data folders exist (data/, data/reports/)
             PathsFS.ensure();
 
-            ConsoleIO.clearScreen();
-            ConsoleIO.printHeader("Atinka Meds — Pharmacy Inventory System (CLI)");
-            ConsoleIO.println("Offline-first • Custom DS • CSV persistence\n");
-
-            // ---------- Storage ----------
-            DrugCsvStore drugStore         = new DrugCsvStore();
+            // ---------- Stores (CSV persistence) ----------
+            DrugCsvStore drugStore = new DrugCsvStore();
             SupplierCsvStore supplierStore = new SupplierCsvStore();
             CustomerCsvStore customerStore = new CustomerCsvStore();
-            PurchaseLogCsv purchaseLog     = new PurchaseLogCsv();
-            SaleLogCsv saleLog             = new SaleLogCsv();
+            PurchaseLogCsv purchaseLog = new PurchaseLogCsv();
+            SaleLogCsv saleLog = new SaleLogCsv();
 
-            // ---------- Services (custom DS only) ----------
-            DrugService drugService         = new DrugService();
+            // ---------- Load from disk ----------
+            Vec<Drug> drugsVec       = drugStore.loadAll();
+            Vec<Supplier> suppliersVec = supplierStore.loadAll();
+            Vec<Customer> customersVec = customerStore.loadAll();
+
+            // ---------- Services ----------
+            // DrugService expects initial Vec<Drug>
+            DrugService drugService = new DrugService(drugsVec);
+
+            // SupplierService and CustomerService are no-arg; hydrate them
             SupplierService supplierService = new SupplierService();
+            for (int i = 0; i < suppliersVec.size(); i++) {
+                Supplier s = suppliersVec.get(i);
+                if (s != null) supplierService.add(s);  // assumes add(Supplier) exists
+            }
+
             CustomerService customerService = new CustomerService();
-            InventoryService inventory      = new InventoryService(drugService);
+            for (int i = 0; i < customersVec.size(); i++) {
+                Customer c = customersVec.get(i);
+                if (c != null) customerService.add(c);  // assumes add(Customer) exists
+            }
 
-            // ---------- Load CSV → Services ----------
-            Vec<Drug> drugs = drugStore.loadAll();
-            for (int i = 0; i < drugs.size(); i++) drugService.addDrug(drugs.get(i));
+            // Inventory service works off DrugService
+            InventoryService inventoryService = new InventoryService(drugService);
 
-            Vec<Supplier> sups = supplierStore.loadAll();
-            for (int i = 0; i < sups.size(); i++) supplierService.add(sups.get(i));
+            // ---------- Router (screens) ----------
+            Router router = new Router(
+                    drugService,
+                    supplierService,
+                    customerService,
+                    inventoryService,
+                    drugStore,
+                    supplierStore,
+                    customerStore,
+                    purchaseLog,
+                    saleLog
+            );
 
-            Vec<Customer> custs = customerStore.loadAll();
-            for (int i = 0; i < custs.size(); i++) customerService.add(custs.get(i));
+            router.run();
 
-            inventory.rebuildLowStockHeap();
-
-            new Router(
-                    drugService, supplierService, customerService, inventory,
-                    drugStore, supplierStore, customerStore, purchaseLog, saleLog
-            ).run();
-        } catch (Throwable t) {
-            ConsoleIO.println("A fatal error occurred: " + (t.getMessage()==null ? t.getClass().getSimpleName() : t.getMessage()));
-        } finally {
-            ConsoleIO.println("\nGoodbye! 👋");
+        } catch (Exception ex) {
+            System.out.println("Fatal error: " + ex.getMessage());
+            ex.printStackTrace();
         }
     }
 }

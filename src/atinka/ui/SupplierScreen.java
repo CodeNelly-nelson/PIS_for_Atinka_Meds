@@ -1,15 +1,23 @@
 package atinka.ui;
 
 import atinka.dsa.Vec;
+import atinka.model.Drug;
 import atinka.model.Supplier;
+import atinka.service.DrugService;
 import atinka.service.SupplierService;
 import atinka.storage.SupplierCsvStore;
 import atinka.util.ConsoleIO;
-import atinka.util.SafeParse;
 
 public final class SupplierScreen extends Screen {
-    private final SupplierService svc; private final SupplierCsvStore store;
-    public SupplierScreen(SupplierService svc, SupplierCsvStore store){ this.svc=svc; this.store=store; }
+    private final SupplierService svc;
+    private final SupplierCsvStore store;
+    private final DrugService drugs; // for adjacency view
+
+    public SupplierScreen(SupplierService svc, SupplierCsvStore store, DrugService drugs){
+        this.svc = svc;
+        this.store = store;
+        this.drugs = drugs;
+    }
 
     @Override public void run() {
         boolean back=false;
@@ -22,8 +30,9 @@ public final class SupplierScreen extends Screen {
             ConsoleIO.println("4) Filter by turnaround <= days");
             ConsoleIO.println("5) Update supplier");
             ConsoleIO.println("6) Remove supplier");
+            ConsoleIO.println("7) View a supplier's drugs (adjacency list)");
             ConsoleIO.println("0) Back\n");
-            int c = ConsoleIO.readIntInRange("Choose: ",0,6);
+            int c = ConsoleIO.readIntInRange("Choose: ",0,7);
             switch(c){
                 case 1 -> add();
                 case 2 -> list(svc.all());
@@ -31,6 +40,7 @@ public final class SupplierScreen extends Screen {
                 case 4 -> filterTurnaround();
                 case 5 -> update();
                 case 6 -> remove();
+                case 7 -> viewAdjacency();
                 case 0 -> back=true;
             }
             if(!back) ConsoleIO.readLine("\nPress ENTER...");
@@ -45,7 +55,7 @@ public final class SupplierScreen extends Screen {
             if (loc==null) { ConsoleIO.println("Cancelled."); return; }
             int ta=ConsoleIO.readIntOrCancel("Turnaround days");
             if (ta==Integer.MIN_VALUE) { ConsoleIO.println("Cancelled."); return; }
-            if (ta < 0) { ConsoleIO.println("Days must be >= 0"); return; }
+            if (ta<0){ ConsoleIO.println("Turnaround cannot be negative."); return; }
             String contact=ConsoleIO.readLineOrCancel("Contact");
             if (contact==null) { ConsoleIO.println("Cancelled."); return; }
 
@@ -63,8 +73,6 @@ public final class SupplierScreen extends Screen {
         Supplier existing = svc.get(id);
         if (existing == null) { ConsoleIO.println("Not found."); return; }
 
-        ConsoleIO.println("Enter new values or leave empty to keep current. Enter 0 to cancel.");
-
         String name = ConsoleIO.readLineOrCancel("Name ["+existing.getName()+"]");
         if (name==null) { ConsoleIO.println("Cancelled."); return; }
         if (!name.isEmpty()) existing.setName(name);
@@ -76,9 +84,11 @@ public final class SupplierScreen extends Screen {
         String ta = ConsoleIO.readLineOrCancel("Turnaround days ["+existing.getTurnaroundDays()+"]");
         if (ta==null) { ConsoleIO.println("Cancelled."); return; }
         if (!ta.isEmpty()) {
-            int v = SafeParse.toInt(ta, Integer.MIN_VALUE);
-            if (v < 0) { ConsoleIO.println("Invalid days."); return; }
-            existing.setTurnaroundDays(v);
+            try {
+                int v = Integer.parseInt(ta);
+                if (v<0){ ConsoleIO.println("Turnaround cannot be negative."); return; }
+                existing.setTurnaroundDays(v);
+            } catch (Exception ex) { ConsoleIO.println("Invalid days."); return; }
         }
 
         String contact = ConsoleIO.readLineOrCancel("Contact ["+existing.getContact()+"]");
@@ -114,6 +124,22 @@ public final class SupplierScreen extends Screen {
         int days = ConsoleIO.readIntOrCancel("Days <=");
         if (days == Integer.MIN_VALUE) { ConsoleIO.println("Cancelled."); return; }
         list(svc.filterByTurnaroundAtMost(days));
+    }
+
+    private void viewAdjacency(){
+        String sid = ConsoleIO.readLineOrCancel("Supplier ID");
+        if (sid==null){ ConsoleIO.println("Cancelled."); return; }
+        Supplier s = svc.get(sid);
+        if (s==null){ ConsoleIO.println("Supplier not found."); return; }
+        ConsoleIO.println("\nDrugs supplied by ["+sid+"] "+s.getName()+":\n");
+        Vec<Drug> list = drugs.bySupplier(sid);
+        if (list.isEmpty()){ ConsoleIO.println("(none)"); return; }
+        ConsoleIO.println(String.format("%-12s %-30s %8s %8s %8s","CODE","NAME","PRICE","STOCK","THRESH"));
+        for (int i=0;i<list.size();i++){
+            Drug d = list.get(i);
+            ConsoleIO.println(String.format("%-12s %-30s %8.2f %8d %8d",
+                    d.getCode(), d.getName(), d.getPrice(), d.getStock(), d.getReorderThreshold()));
+        }
     }
 
     private void list(Vec<Supplier> v){

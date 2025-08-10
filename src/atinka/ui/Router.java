@@ -36,12 +36,12 @@ public final class Router {
     public void run() {
         boolean running = true;
         DrugScreen drugScreen = new DrugScreen(drugs, inventory, drugStore);
-        SupplierScreen supplierScreen = new SupplierScreen(suppliers, supplierStore);
+        SupplierScreen supplierScreen = new SupplierScreen(suppliers, supplierStore, drugs); // <- pass DrugService
         CustomerScreen customerScreen = new CustomerScreen(customers, customerStore);
         PurchaseScreen purchaseScreen = new PurchaseScreen(drugs, inventory, purchaseLog, drugStore);
         SalesScreen salesScreen = new SalesScreen(drugs, inventory, saleLog, drugStore);
         StockScreen stockScreen = new StockScreen(inventory);
-        ReportScreen reportScreen = new ReportScreen(drugs, saleLog); // <— pass saleLog here
+        ReportScreen reportScreen = new ReportScreen(drugs, saleLog);
 
         while (running) {
             ConsoleIO.clearScreen();
