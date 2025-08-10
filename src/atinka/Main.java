@@ -6,6 +6,7 @@ import atinka.service.*;
 import atinka.storage.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public class Main {
@@ -13,7 +14,7 @@ public class Main {
         PathsFS.ensure();
         ConsoleIO.clearScreen();
         ConsoleIO.printHeader("Atinka Meds — Pharmacy Inventory System (CLI)");
-        ConsoleIO.println("Offline-first • CSV persistence enabled (Step 5)\n");
+        ConsoleIO.println("Offline-first • CSV persistence enabled (Steps 5–6)\n");
 
         // Storage
         DrugCsvStore drugStore = new DrugCsvStore();
@@ -37,11 +38,10 @@ class Services {
 
     Services(DrugCsvStore drugStore, SupplierCsvStore supplierStore, CustomerCsvStore customerStore,
              PurchaseLogCsv purchaseLog, SaleLogCsv saleLog) {
-        // Load master lists into services
+        // Load masters
         for (Drug d : drugStore.loadAll()) drugs.addDrug(d);
         for (Supplier s : supplierStore.loadAll()) suppliers.add(s);
         for (Customer c : customerStore.loadAll()) customers.add(c);
-        // (Optional) You can read logs here if you want to prewarm reports)
         inventory.rebuildLowStockHeap();
     }
 }
@@ -86,7 +86,7 @@ class MenuRouter {
         }
     }
 
-    // ---- Drugs ----
+    // ---------------- Drugs ----------------
     private void drugsMenu() {
         while (true) {
             ConsoleIO.clearScreen();
@@ -94,13 +94,15 @@ class MenuRouter {
             ConsoleIO.println("1) Add drug");
             ConsoleIO.println("2) List drugs (by name)");
             ConsoleIO.println("3) List drugs (by price)");
+            ConsoleIO.println("4) Search drugs");
             ConsoleIO.println("0) Back\n");
-            int c = ConsoleIO.readIntInRange("Choose: ", 0, 3);
+            int c = ConsoleIO.readIntInRange("Choose: ", 0, 4);
             if (c == 0) return;
             switch (c) {
                 case 1 -> addDrugFlow();
                 case 2 -> listDrugsByName();
                 case 3 -> listDrugsByPrice();
+                case 4 -> searchDrugsFlow();
             }
             ConsoleIO.readLine("\nPress ENTER...");
         }
@@ -121,25 +123,59 @@ class MenuRouter {
 
     private void listDrugsByName() { renderDrugs(sv.drugs.listSortedByName()); }
     private void listDrugsByPrice() { renderDrugs(sv.drugs.listSortedByPrice()); }
+
     private void renderDrugs(List<Drug> list) {
         if (list.isEmpty()) { ConsoleIO.println("No drugs."); return; }
         ConsoleIO.println(String.format("%-12s %-28s %8s %8s %12s %8s", "CODE", "NAME", "PRICE", "STOCK", "EXPIRY", "THRESH"));
-        for (Drug d : list) ConsoleIO.println(String.format("%-12s %-28s %8.2f %8d %12s %8d", d.getCode(), d.getName(), d.getPrice(), d.getStock(), d.getExpiry(), d.getReorderThreshold()));
+        for (Drug d : list) ConsoleIO.println(String.format("%-12s %-28s %8.2f %8d %12s %8d",
+                d.getCode(), d.getName(), d.getPrice(), d.getStock(), d.getExpiry(), d.getReorderThreshold()));
     }
 
-    // ---- Suppliers ----
+    private void searchDrugsFlow() {
+        ConsoleIO.println("Search by:");
+        ConsoleIO.println("1) Code");
+        ConsoleIO.println("2) Name contains");
+        ConsoleIO.println("3) Supplier ID");
+        int ch = ConsoleIO.readIntInRange("Choose: ", 1, 3);
+        switch (ch) {
+            case 1 -> {
+                String code = ConsoleIO.readLine("Enter code: ");
+                Drug d = sv.drugs.getByCode(code);
+                if (d == null) ConsoleIO.println("Not found.");
+                else renderDrugs(List.of(d));
+            }
+            case 2 -> {
+                String term = ConsoleIO.readLine("Name contains: ");
+                renderDrugs(sv.drugs.searchByNameContains(term));
+            }
+            case 3 -> {
+                String supId = ConsoleIO.readLine("Supplier ID: ");
+                renderDrugs(sv.drugs.searchBySupplier(supId));
+            }
+        }
+    }
+
+    // ---------------- Suppliers ----------------
     private void suppliersMenu() {
         while (true) {
             ConsoleIO.clearScreen();
             ConsoleIO.printHeader("Suppliers");
             ConsoleIO.println("1) Add supplier");
             ConsoleIO.println("2) List suppliers");
+            ConsoleIO.println("3) Filter by location");
+            ConsoleIO.println("4) Filter by turnaround ≤ days");
+            ConsoleIO.println("5) Link drug ↔ supplier");
+            ConsoleIO.println("6) Unlink drug ↔ supplier");
             ConsoleIO.println("0) Back\n");
-            int c = ConsoleIO.readIntInRange("Choose: ", 0, 2);
+            int c = ConsoleIO.readIntInRange("Choose: ", 0, 6);
             if (c == 0) return;
             switch (c) {
                 case 1 -> addSupplierFlow();
                 case 2 -> listSuppliers();
+                case 3 -> filterSuppliersByLocation();
+                case 4 -> filterSuppliersByTurnaround();
+                case 5 -> linkDrugSupplierFlow(true);
+                case 6 -> linkDrugSupplierFlow(false);
             }
             ConsoleIO.readLine("\nPress ENTER...");
         }
@@ -150,8 +186,7 @@ class MenuRouter {
         String location = ConsoleIO.readLine("Location: ");
         int ta = ConsoleIO.readIntInRange("Turnaround days: ", 0, 365);
         String contact = ConsoleIO.readLine("Contact: ");
-        Supplier s = new Supplier("", name, location, ta, contact);
-        s = sv.suppliers.create(s.getName(), s.getLocation(), s.getTurnaroundDays(), s.getContact());
+        Supplier s = sv.suppliers.create(name, location, ta, contact);
         supplierStore.saveAll(sv.suppliers.all());
         ConsoleIO.println("Added supplier: " + s.getId());
     }
@@ -160,10 +195,43 @@ class MenuRouter {
         var list = sv.suppliers.all();
         if (list.isEmpty()) { ConsoleIO.println("No suppliers."); return; }
         ConsoleIO.println(String.format("%-6s %-20s %-16s %6s %-15s", "ID", "NAME", "LOCATION", "TA", "CONTACT"));
-        for (Supplier s : list) ConsoleIO.println(String.format("%-6s %-20s %-16s %6d %-15s", s.getId(), s.getName(), s.getLocation(), s.getTurnaroundDays(), s.getContact()));
+        for (Supplier s : list) ConsoleIO.println(String.format("%-6s %-20s %-16s %6d %-15s",
+                s.getId(), s.getName(), s.getLocation(), s.getTurnaroundDays(), s.getContact()));
     }
 
-    // ---- Customers ----
+    private void filterSuppliersByLocation() {
+        String q = ConsoleIO.readLine("Location contains: ");
+        var list = sv.suppliers.filterByLocation(q);
+        if (list.isEmpty()) { ConsoleIO.println("No matches."); return; }
+        ConsoleIO.println(String.format("%-6s %-20s %-16s %6s %-15s", "ID", "NAME", "LOCATION", "TA", "CONTACT"));
+        for (Supplier s : list) ConsoleIO.println(String.format("%-6s %-20s %-16s %6d %-15s",
+                s.getId(), s.getName(), s.getLocation(), s.getTurnaroundDays(), s.getContact()));
+    }
+
+    private void filterSuppliersByTurnaround() {
+        int days = ConsoleIO.readIntInRange("Max days: ", 0, 365);
+        var list = sv.suppliers.filterByTurnaroundAtMost(days);
+        if (list.isEmpty()) { ConsoleIO.println("No matches."); return; }
+        ConsoleIO.println(String.format("%-6s %-20s %-16s %6s %-15s", "ID", "NAME", "LOCATION", "TA", "CONTACT"));
+        for (Supplier s : list) ConsoleIO.println(String.format("%-6s %-20s %-16s %6d %-15s",
+                s.getId(), s.getName(), s.getLocation(), s.getTurnaroundDays(), s.getContact()));
+    }
+
+    private void linkDrugSupplierFlow(boolean link) {
+        String code = ConsoleIO.readLine("Drug code: ");
+        String supId = ConsoleIO.readLine("Supplier ID: ");
+        if (link) {
+            sv.drugs.linkDrugToSupplier(code, supId);
+            ConsoleIO.println("Linked.");
+        } else {
+            sv.drugs.unlinkDrugFromSupplier(code, supId);
+            ConsoleIO.println("Unlinked.");
+        }
+        // Persist supplier mapping via drugs.csv
+        drugStore.saveAll(sv.drugs.all());
+    }
+
+    // ---------------- Customers ----------------
     private void customersMenu() {
         while (true) {
             ConsoleIO.clearScreen();
@@ -196,7 +264,7 @@ class MenuRouter {
         for (Customer c : list) ConsoleIO.println(String.format("%-6s %-24s %-18s", c.getId(), c.getName(), c.getContact()));
     }
 
-    // ---- Purchases ----
+    // ---------------- Purchases ----------------
     private void purchasesMenu() {
         while (true) {
             ConsoleIO.clearScreen();
@@ -236,20 +304,20 @@ class MenuRouter {
         for (PurchaseTxn t : list) ConsoleIO.println(t.toString());
     }
 
-    // ---- Sales ----
+    // ---------------- Sales ----------------
     private void salesMenu() {
         while (true) {
             ConsoleIO.clearScreen();
             ConsoleIO.printHeader("Sales");
             ConsoleIO.println("1) Record sale");
-            ConsoleIO.println("2) Sales between dates (summary count) — coming after we replay logs");
+            ConsoleIO.println("2) Sales between dates (from log)");
             ConsoleIO.println("0) Back\n");
             int c = ConsoleIO.readIntInRange("Choose: ", 0, 2);
             if (c == 0) return;
             try {
                 switch (c) {
                     case 1 -> saleFlow();
-                    case 2 -> ConsoleIO.println("TODO in Step 6");
+                    case 2 -> salesBetweenFromLogFlow();
                 }
             } catch (Exception ex) {
                 ConsoleIO.println("Error: " + ex.getMessage());
@@ -268,7 +336,23 @@ class MenuRouter {
         ConsoleIO.println("Recorded & saved sale: " + t);
     }
 
-    // ---- Stock Monitor ---- (unchanged render)
+    private void salesBetweenFromLogFlow() {
+        String from = ConsoleIO.readLine("From (YYYY-MM-DD): ");
+        String to = ConsoleIO.readLine("To   (YYYY-MM-DD): ");
+        LocalDateTime a = LocalDate.parse(from).atStartOfDay();
+        LocalDateTime b = LocalDate.parse(to).atTime(23,59,59);
+        var all = saleLog.readAll();
+        double total = 0.0; int count = 0;
+        for (SaleTxn s : all) {
+            if (!s.getTimestamp().isBefore(a) && !s.getTimestamp().isAfter(b)) {
+                count++; total += s.getTotal();
+            }
+        }
+        ConsoleIO.println("Sales count: " + count);
+        ConsoleIO.println(String.format("Total value: %.2f", total));
+    }
+
+    // ---------------- Stock Monitor ----------------
     private void stockMenu() {
         while (true) {
             ConsoleIO.clearScreen();
@@ -301,6 +385,8 @@ class MenuRouter {
         for (Drug d : list) ConsoleIO.println(String.format("%-12s %-28s %8d %8d %8.2f", d.getCode(), d.getName(), d.getStock(), d.getReorderThreshold(), d.getPrice()));
     }
 
+
+    // ---------------- Reports ----------------
     private void reportsMenu() {
         ConsoleIO.clearScreen();
         ConsoleIO.printHeader("Reports");
