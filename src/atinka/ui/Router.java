@@ -41,7 +41,7 @@ public final class Router {
         PurchaseScreen purchaseScreen = new PurchaseScreen(drugs, inventory, purchaseLog, drugStore);
         SalesScreen salesScreen = new SalesScreen(drugs, inventory, saleLog, drugStore);
         StockScreen stockScreen = new StockScreen(inventory);
-        ReportScreen reportScreen = new ReportScreen(drugs);
+        ReportScreen reportScreen = new ReportScreen(drugs, saleLog); // <— pass saleLog here
 
         while (running) {
             ConsoleIO.clearScreen();
@@ -64,7 +64,15 @@ public final class Router {
                 case 5 -> salesScreen.run();
                 case 6 -> stockScreen.run();
                 case 7 -> reportScreen.run();
-                case 0 -> running = false;
+                case 0 -> {
+                    Boolean confirm = ConsoleIO.readYesNoOrCancel("Exit the application?");
+                    if (confirm == null) {
+                        ConsoleIO.println("Cancelled. Returning to menu...");
+                        ConsoleIO.readLine("\nPress ENTER...");
+                    } else if (confirm.booleanValue()) {
+                        running = false;
+                    }
+                }
             }
         }
     }

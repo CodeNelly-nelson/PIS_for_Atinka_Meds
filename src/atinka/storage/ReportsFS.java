@@ -1,46 +1,61 @@
 package atinka.storage;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 
-/** Utilities for writing text reports into data/reports (atomic-ish write). */
+/** Report file utilities: single-file per type, atomic overwrite and read. */
 public final class ReportsFS {
     private ReportsFS() {}
 
-    /** Write the report content to a timestamped file under data/reports and return the path. */
-    public static Path writeReport(String content) {
+    public static Path performancePath() { return PathsFS.reportsDir().resolve("performance.txt"); }
+    public static Path salesPath()       { return PathsFS.reportsDir().resolve("sales.txt"); }
+
+    private static void ensureDirs() { PathsFS.ensure(); }
+
+    public static Path writePerformance(String content) {
+        return writeSingleton(performancePath(), content);
+    }
+
+    public static Path writeSales(String content) {
+        return writeSingleton(salesPath(), content);
+    }
+
+    public static String readPerformance() {
+        return readAllOrNull(performancePath());
+    }
+
+    public static String readSales() {
+        return readAllOrNull(salesPath());
+    }
+
+    private static Path writeSingleton(Path target, String content) {
+        ensureDirs();
+        Path tmp = target.resolveSibling(target.getFileName().toString() + ".tmp");
         try {
-            // Ensure directories exist
-            PathsFS.ensure();
-
-            // Build filename: performance_YYYYMMDD_HHMMSS.txt
-            String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-            String filename = "performance_" + ts + ".txt";
-            Path dir = PathsFS.reportsDir();
-            Path target = dir.resolve(filename);
-            Path tmp = dir.resolve(filename + ".tmp");
-
-            // Write to tmp, then move into place
-            Files.writeString(tmp, content == null ? "" : content,
+            Files.write(tmp, (content == null ? "" : content).getBytes(StandardCharsets.UTF_8),
                     StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-
             Files.move(tmp, target,
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING,
                     java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-
             return target;
         } catch (Exception e) {
-            // Fallback: try a direct write to a simple name if anything failed above
             try {
-                Path fallback = PathsFS.reportsDir().resolve("performance_fallback.txt");
-                Files.writeString(fallback, content == null ? "" : content,
+                Files.write(target, (content == null ? "" : content).getBytes(StandardCharsets.UTF_8),
                         StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-                return fallback;
-            } catch (Exception ignored) { /* give up */ }
-            return PathsFS.reportsDir().resolve("performance_error.txt");
+            } catch (Exception ignored) {}
+            return target;
+        }
+    }
+
+    private static String readAllOrNull(Path p) {
+        try {
+            if (!Files.exists(p)) return null;
+            byte[] b = Files.readAllBytes(p);
+            return new String(b, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return null;
         }
     }
 }

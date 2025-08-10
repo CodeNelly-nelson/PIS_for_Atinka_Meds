@@ -2,48 +2,46 @@ package atinka.storage;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.Paths;
 
-/** Central file-system paths + bootstrap for data directory. */
+/** Centralizes filesystem locations for data persistence. */
 public final class PathsFS {
-    private PathsFS(){}
+    private PathsFS() {}
 
-    // Root data dir: ./data
-    public static Path dataRoot() { return Path.of("data"); }
-
-    // Leaf files/dirs
-    public static Path drugsPath()        { return dataRoot().resolve("drugs.csv"); }
-    public static Path suppliersPath()    { return dataRoot().resolve("suppliers.csv"); }
-    public static Path customersPath()    { return dataRoot().resolve("customers.csv"); }
-    public static Path purchaseLogPath()  { return dataRoot().resolve("purchase_log.csv"); }
-    public static Path salesLogPath()     { return dataRoot().resolve("sales_log.csv"); }
-    public static Path reportsDir()       { return dataRoot().resolve("reports"); }
-
-    /** Ensure folders exist and the core CSV files are present. */
-    public static void ensure() {
-        try {
-            // directories
-            if (!Files.exists(dataRoot()))  Files.createDirectories(dataRoot());
-            if (!Files.exists(reportsDir())) Files.createDirectories(reportsDir());
-
-            // files (touch if missing)
-            touchIfMissing(drugsPath());
-            touchIfMissing(suppliersPath());
-            touchIfMissing(customersPath());
-            touchIfMissing(purchaseLogPath());
-            touchIfMissing(salesLogPath());
-        } catch (Exception e) {
-            System.out.println("[WARN] Failed to ensure data directories/files: " + e.getMessage());
-        }
+    public static Path dataDir() {
+        return Paths.get("data");
     }
 
-    private static void touchIfMissing(Path p) {
+    public static Path drugsPath() {
+        return dataDir().resolve("drugs.csv");
+    }
+
+    public static Path suppliersPath() {
+        return dataDir().resolve("suppliers.csv");
+    }
+
+    public static Path customersPath() {
+        return dataDir().resolve("customers.csv");
+    }
+
+    public static Path purchaseLogPath() {
+        return dataDir().resolve("purchases.csv");
+    }
+
+    public static Path salesLogPath() {
+        return dataDir().resolve("sales.csv");
+    }
+
+    public static Path reportsDir() {
+        return dataDir().resolve("reports");
+    }
+
+    public static void ensure() {
         try {
-            if (!Files.exists(p)) {
-                Files.writeString(p, "", StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-            }
+            Files.createDirectories(dataDir());
+            Files.createDirectories(reportsDir());
         } catch (Exception e) {
-            System.out.println("[WARN] Failed to create " + p + ": " + e.getMessage());
+            throw new RuntimeException("Unable to create data directories: " + e.getMessage(), e);
         }
     }
 }

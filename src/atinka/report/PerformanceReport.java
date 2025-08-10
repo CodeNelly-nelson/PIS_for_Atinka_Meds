@@ -16,13 +16,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Algorithm performance report (uses only custom DS/algorithms on the data you have).
- * Make sure this class lives in a file named PerformanceReport.java.
+ * Algorithm performance report (custom DS only).
+ * Writes a single file: data/reports/performance.txt
  */
 public final class PerformanceReport {
     private PerformanceReport() {}
 
-    /** Entry point used by ReportScreen. */
     public static Path generate(DrugService drugs) {
         StringBuilder out = new StringBuilder();
         Vec<Drug> data = drugs.all(); // custom Vec copy
@@ -125,10 +124,10 @@ public final class PerformanceReport {
         out.append("- Times depend on dataset size and machine.\n");
         out.append("- Comparisons counted via wrappers around custom Comparator.\n");
 
-        return ReportsFS.writeReport(out.toString());
+        return ReportsFS.writePerformance(out.toString());
     }
 
-    // ---------------- Helpers (no java.util collections) ----------------
+    // ---------------- Helpers ----------------
 
     private static Vec<Drug> copyOf(Vec<Drug> v) {
         Vec<Drug> c = new Vec<>(v.size());
@@ -136,7 +135,7 @@ public final class PerformanceReport {
         return c;
     }
 
-    /** Fisher–Yates shuffle using Math.random(), in-place on Vec. (generic to avoid wildcard capture) */
+    /** Fisher–Yates shuffle using Math.random(), in-place on Vec. */
     private static <T> void shuffleVec(Vec<T> v) {
         for (int i = v.size() - 1; i > 0; i--) {
             int j = (int)Math.floor(Math.random() * (i + 1));
@@ -176,14 +175,12 @@ public final class PerformanceReport {
     }
     private static char toLower(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c; }
 
-    // Counting comparator wrapper
     private static final class CountingComparator<T> implements Comparator<T> {
         private final Comparator<T> base; private final Metrics metrics;
         CountingComparator(Comparator<T> base, Metrics m){ this.base=base; this.metrics=m; }
         @Override public int compare(T a, T b){ metrics.addComparisons(1); return base.compare(a,b); }
     }
 
-    // Tiny format helpers (avoid java.util.Formatter)
     private static String line2(String fmt, Object a, Object b) {
         String s = fmt;
         if (s.contains("%d")) s = s.replaceFirst("%d", String.valueOf(a));
