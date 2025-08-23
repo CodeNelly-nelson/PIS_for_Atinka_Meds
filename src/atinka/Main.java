@@ -14,11 +14,14 @@ import atinka.storage.PurchaseLogCsv;
 import atinka.storage.SaleLogCsv;
 import atinka.storage.SupplierCsvStore;
 import atinka.ui.AtinkaCLI;
+import atinka.util.Ansi;
 import atinka.util.Tui;
 
 /** Entry point for the Atinka Meds console app. */
 public final class Main {
     public static void main(String[] args){
+        splash();
+
         // Storage
         DrugCsvStore drugStore = new DrugCsvStore();
         SupplierCsvStore supplierStore = new SupplierCsvStore();
@@ -42,4 +45,25 @@ public final class Main {
         new AtinkaCLI(drugs, suppliers, customers, inventory,
                 drugStore, supplierStore, customerStore, purchaseLog, saleLog).run();
     }
+
+    private static void splash(){
+        String title = " ATINKA MEDS ";
+        String line = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
+        if (Ansi.isEnabled()){
+            // Green line, cyan star, bold white text
+            System.out.println(Ansi.fg("green") + line + Ansi.reset());
+            System.out.println(
+                    Ansi.fg("cyan") + "✦ " + Ansi.reset() +
+                            Ansi.bold() + Ansi.fg("white") + title + Ansi.reset() +
+                            Ansi.fg("cyan") + " ✦" + Ansi.reset()
+            );
+            System.out.println(Ansi.fg("green") + line + Ansi.reset());
+        } else {
+            System.out.println("==================================================");
+            System.out.println("**" + title + "**");
+            System.out.println("==================================================");
+        }
+        System.out.println();
+    }
+
 }

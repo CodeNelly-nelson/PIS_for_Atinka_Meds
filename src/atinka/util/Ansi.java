@@ -1,40 +1,61 @@
 package atinka.util;
 
-/** Minimal ANSI color/style helpers (no external libs). */
+/** ANSI color/style helpers (auto-disables when unsupported). */
 public final class Ansi {
-    private Ansi() {}
+    private static final boolean ENABLED = detect();
 
-    // Reset + basic styles
-    public static final String RESET = "\u001B[0m";
-    public static final String BOLD  = "\u001B[1m";
-    public static final String DIM   = "\u001B[2m";
-    public static final String ITAL  = "\u001B[3m";
-    public static final String UNDER = "\u001B[4m";
+    private Ansi(){}
 
-    // Colors (fg)
-    public static final String FG_BLACK   = "\u001B[30m";
-    public static final String FG_RED     = "\u001B[31m";
-    public static final String FG_GREEN   = "\u001B[32m";
-    public static final String FG_YELLOW  = "\u001B[33m";
-    public static final String FG_BLUE    = "\u001B[34m";
-    public static final String FG_MAGENTA = "\u001B[35m";
-    public static final String FG_CYAN    = "\u001B[36m";
-    public static final String FG_WHITE   = "\u001B[37m";
+    public static String reset(){ return ENABLED ? "\u001B[0m" : ""; }
+    public static String bold(){ return ENABLED ? "\u001B[1m" : ""; }
+    public static String dim(){ return ENABLED ? "\u001B[2m" : ""; }
 
-    // Colors (bg)
-    public static final String BG_RED     = "\u001B[41m";
-    public static final String BG_GREEN   = "\u001B[42m";
-    public static final String BG_YELLOW  = "\u001B[43m";
-    public static final String BG_BLUE    = "\u001B[44m";
-    public static final String BG_MAGENTA = "\u001B[45m";
-    public static final String BG_CYAN    = "\u001B[46m";
-    public static final String BG_WHITE   = "\u001B[47m";
+    // Foreground
+    public static String fg(String name){
+        if (!ENABLED) return "";
+        if ("black".equals(name))   return "\u001B[30m";
+        if ("red".equals(name))     return "\u001B[31m";
+        if ("green".equals(name))   return "\u001B[32m";
+        if ("yellow".equals(name))  return "\u001B[33m";
+        if ("blue".equals(name))    return "\u001B[34m";
+        if ("magenta".equals(name)) return "\u001B[35m";
+        if ("cyan".equals(name))    return "\u001B[36m";
+        if ("white".equals(name))   return "\u001B[37m";
+        return "";
+    }
 
-    public static String color(String s, String... codes) {
-        if (s == null) s = "";
-        StringBuilder sb = new StringBuilder();
-        for (String c : codes) sb.append(c);
-        sb.append(s).append(RESET);
-        return sb.toString();
+    // Background (used for headers)
+    public static String bg(String name){
+        if (!ENABLED) return "";
+        if ("black".equals(name))   return "\u001B[40m";
+        if ("red".equals(name))     return "\u001B[41m";
+        if ("green".equals(name))   return "\u001B[42m";
+        if ("yellow".equals(name))  return "\u001B[43m";
+        if ("blue".equals(name))    return "\u001B[44m";
+        if ("magenta".equals(name)) return "\u001B[45m";
+        if ("cyan".equals(name))    return "\u001B[46m";
+        if ("white".equals(name))   return "\u001B[47m";
+        return "";
+    }
+
+    public static boolean isEnabled(){ return ENABLED; }
+
+    private static boolean detect(){
+        try {
+            String os = System.getProperty("os.name","").toLowerCase();
+            String term = System.getenv("TERM");
+            if (os.contains("win")) {
+                // Windows terminals often support ANSI now; allow unless explicitly disabled.
+                String no = System.getenv("NO_COLOR");
+                return no == null || no.length() == 0;
+            }
+            if (term == null) term = "";
+            // If TERM is dumb or explicitly disabled, turn off.
+            if ("dumb".equals(term)) return false;
+            String no = System.getenv("NO_COLOR");
+            return no == null || no.length() == 0;
+        } catch (Exception e){
+            return false;
+        }
     }
 }
