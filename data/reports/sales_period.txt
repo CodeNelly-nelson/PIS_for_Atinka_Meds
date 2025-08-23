@@ -1,0 +1,16 @@
+Atinka Meds — Sales & Accounting Report
+Period: 2025-08-23T00:00  to  2025-08-23T23:59:59
+Generated: 2025-08-23T22:31:20.750722
+
+Summary
+- Transactions: 1
+- Units sold:   200
+- Revenue:      460.00
+
+Per-drug breakdown (sorted by revenue desc)
+CODE        NAME                             QTY     REVENUE
+P001        Paracetamol                      200      460.00
+
+Per-day revenue
+DAY              REVENUE
+2025-08-23        460.00

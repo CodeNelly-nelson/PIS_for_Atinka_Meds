@@ -1,3 +1,4 @@
 # code,name,price,stock,expiry,threshold,suppliers
-P001,Paracetamol,2.30,400,2026-12-12,50,S002
+P001,Paracetamol,2.30,205,2026-12-12,50,S002
 A001,APC,5.60,200,2027-06-03,50,
+C004,Citro C,5.00,100,2026-12-31,50,
