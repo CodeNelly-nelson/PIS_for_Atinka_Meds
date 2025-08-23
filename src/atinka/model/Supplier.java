@@ -1,42 +1,39 @@
 package atinka.model;
 
-/** Supplier model without java.util. */
-public class Supplier {
-    private final String id;     // unique
+/**
+ * Supplier profile
+ *  - id: simple ID like S0001
+ *  - name
+ *  - contact (phone/email)
+ *  - location (e.g., "Accra")
+ *  - turnaroundDays: delivery time in days
+ */
+public final class Supplier {
+    private final String id;
     private String name;
-    private String location;     // e.g., Adenta
-    private int turnaroundDays;  // delivery lead time
-    private String contact;      // phone/email
+    private String contact;
+    private String location;
+    private int turnaroundDays;
 
-    public Supplier(String id, String name, String location, int turnaroundDays, String contact) {
-        if (id == null || name == null || location == null) throw new IllegalArgumentException("Null fields not allowed");
+    public Supplier(String id, String name, String contact, String location, int turnaroundDays) {
+        if (id == null || id.trim().isEmpty()) throw new IllegalArgumentException("id required");
+        if (name == null || name.trim().isEmpty()) throw new IllegalArgumentException("name required");
+        if (turnaroundDays < 0) turnaroundDays = 0;
         this.id = id.trim();
         this.name = name.trim();
-        this.location = location.trim();
-        this.turnaroundDays = Math.max(0, turnaroundDays);
         this.contact = contact == null ? "" : contact.trim();
+        this.location = location == null ? "" : location.trim();
+        this.turnaroundDays = turnaroundDays;
     }
 
-    public String getId() { return id; }
-    public String getName() { return name; }
-    public void setName(String name) { if (name == null) throw new IllegalArgumentException(); this.name = name.trim(); }
-    public String getLocation() { return location; }
-    public void setLocation(String location) { if (location == null) throw new IllegalArgumentException(); this.location = location.trim(); }
-    public int getTurnaroundDays() { return turnaroundDays; }
-    public void setTurnaroundDays(int d) { this.turnaroundDays = Math.max(0, d); }
-    public String getContact() { return contact; }
-    public void setContact(String c) { this.contact = c == null ? "" : c.trim(); }
+    public String getId(){ return id; }
+    public String getName(){ return name; }
+    public String getContact(){ return contact; }
+    public String getLocation(){ return location; }
+    public int getTurnaroundDays(){ return turnaroundDays; }
 
-    @Override
-    public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Supplier{")
-                .append("id=").append(id)
-                .append(", name=").append(name)
-                .append(", loc=").append(location)
-                .append(", ta=").append(turnaroundDays)
-                .append(", contact=").append(contact)
-                .append("}");
-        return sb.toString();
-    }
+    public void setName(String n){ if (n != null && n.trim().length() > 0) name = n.trim(); }
+    public void setContact(String c){ contact = c == null ? "" : c.trim(); }
+    public void setLocation(String l){ location = l == null ? "" : l.trim(); }
+    public void setTurnaroundDays(int d){ if (d >= 0) turnaroundDays = d; }
 }

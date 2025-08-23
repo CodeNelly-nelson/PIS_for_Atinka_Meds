@@ -1,70 +1,45 @@
 package atinka;
 
-import atinka.service.*;
-import atinka.storage.*;
-import atinka.ui.Router;
-
 import atinka.dsa.Vec;
+import atinka.model.Customer;
 import atinka.model.Drug;
 import atinka.model.Supplier;
-import atinka.model.Customer;
+import atinka.service.CustomerService;
+import atinka.service.DrugService;
+import atinka.service.InventoryService;
+import atinka.service.SupplierService;
+import atinka.storage.CustomerCsvStore;
+import atinka.storage.DrugCsvStore;
+import atinka.storage.PurchaseLogCsv;
+import atinka.storage.SaleLogCsv;
+import atinka.storage.SupplierCsvStore;
+import atinka.ui.AtinkaCLI;
+import atinka.util.Tui;
 
+/** Entry point for the Atinka Meds console app. */
 public final class Main {
-    public static void main(String[] args) {
-        try {
-            // Ensure data folders exist (data/, data/reports/)
-            PathsFS.ensure();
+    public static void main(String[] args){
+        // Storage
+        DrugCsvStore drugStore = new DrugCsvStore();
+        SupplierCsvStore supplierStore = new SupplierCsvStore();
+        CustomerCsvStore customerStore = new CustomerCsvStore();
+        PurchaseLogCsv purchaseLog = new PurchaseLogCsv();
+        SaleLogCsv saleLog = new SaleLogCsv();
 
-            // ---------- Stores (CSV persistence) ----------
-            DrugCsvStore drugStore = new DrugCsvStore();
-            SupplierCsvStore supplierStore = new SupplierCsvStore();
-            CustomerCsvStore customerStore = new CustomerCsvStore();
-            PurchaseLogCsv purchaseLog = new PurchaseLogCsv();
-            SaleLogCsv saleLog = new SaleLogCsv();
+        // Load data
+        Vec<Drug> drugsData = drugStore.load();
+        Vec<Supplier> suppliersData = supplierStore.load();
+        Vec<Customer> customersData = customerStore.load();
 
-            // ---------- Load from disk ----------
-            Vec<Drug> drugsVec       = drugStore.loadAll();
-            Vec<Supplier> suppliersVec = supplierStore.loadAll();
-            Vec<Customer> customersVec = customerStore.loadAll();
+        // Services
+        DrugService drugs = new DrugService(drugsData);
+        SupplierService suppliers = new SupplierService(suppliersData);
+        CustomerService customers = new CustomerService(customersData);
+        InventoryService inventory = new InventoryService(drugs, purchaseLog, saleLog);
 
-            // ---------- Services ----------
-            // DrugService expects initial Vec<Drug>
-            DrugService drugService = new DrugService(drugsVec);
-
-            // SupplierService and CustomerService are no-arg; hydrate them
-            SupplierService supplierService = new SupplierService();
-            for (int i = 0; i < suppliersVec.size(); i++) {
-                Supplier s = suppliersVec.get(i);
-                if (s != null) supplierService.add(s);  // assumes add(Supplier) exists
-            }
-
-            CustomerService customerService = new CustomerService();
-            for (int i = 0; i < customersVec.size(); i++) {
-                Customer c = customersVec.get(i);
-                if (c != null) customerService.add(c);  // assumes add(Customer) exists
-            }
-
-            // Inventory service works off DrugService
-            InventoryService inventoryService = new InventoryService(drugService);
-
-            // ---------- Router (screens) ----------
-            Router router = new Router(
-                    drugService,
-                    supplierService,
-                    customerService,
-                    inventoryService,
-                    drugStore,
-                    supplierStore,
-                    customerStore,
-                    purchaseLog,
-                    saleLog
-            );
-
-            router.run();
-
-        } catch (Exception ex) {
-            System.out.println("Fatal error: " + ex.getMessage());
-            ex.printStackTrace();
-        }
+        // App
+        Tui.toastInfo("Welcome to Atinka Meds.");
+        new AtinkaCLI(drugs, suppliers, customers, inventory,
+                drugStore, supplierStore, customerStore, purchaseLog, saleLog).run();
     }
 }

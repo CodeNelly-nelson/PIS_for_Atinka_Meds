@@ -8,113 +8,119 @@ import atinka.dsa.Vec;
 import atinka.model.Drug;
 import atinka.service.DrugService;
 import atinka.storage.ReportsFS;
-import atinka.util.Metrics;
-import atinka.util.Stopwatch;
 
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Algorithm performance report (custom DS only).
- * Writes a single file: data/reports/performance.txt
+ * Generates an algorithm performance report using ONLY custom DS/algorithms.
+ * Output goes to data/reports/performance.txt (single file, overwritten).
  */
 public final class PerformanceReport {
-    private PerformanceReport() {}
+    private PerformanceReport(){}
 
-    public static Path generate(DrugService drugs) {
+    public static java.nio.file.Path generate(DrugService drugsSvc){
         StringBuilder out = new StringBuilder();
-        Vec<Drug> data = drugs.all(); // custom Vec copy
 
+        // ---------- data snapshot ----------
+        Vec<Drug> data = drugsSvc.all(); // copy
         out.append("Atinka Meds — Algorithm Performance Report\n");
         out.append("Generated: ").append(LocalDateTime.now()).append("\n\n");
         out.append("Data snapshot\n");
         out.append("- Drug count: ").append(data.size()).append("\n\n");
 
-        // ---------------- Sorting (by NAME) ----------------
+        // ---------- Sorting (by name) ----------
         out.append("Sorting (by name)\n");
         if (data.size() == 0) {
             out.append("No data to sort.\n\n");
         } else {
-            Comparator<Drug> byName = (a,b) -> a.getName().compareToIgnoreCase(b.getName());
+            Comparator<Drug> byName = (a,b) -> compareIgnoreCase(a.getName(), b.getName());
 
-            Vec<Drug> copy1 = copyOf(data);
-            shuffleVec(copy1);
-            Metrics mIns = new Metrics();
-            Stopwatch sw1 = Stopwatch.startNew();
-            InsertionSort.sort(copy1, new CountingComparator<>(byName, mIns));
-            mIns.setNanos(sw1.stopNanos());
+            // InsertionSort
+            Vec<Drug> v1 = copyOf(data);
+            shuffle(v1);
+            long t1 = now();
+            long insComparisons = sortAndCountComparisonsInsertion(v1, byName);
+            long dt1 = now() - t1;
 
-            Vec<Drug> copy2 = copyOf(data);
-            shuffleVec(copy2);
-            Metrics mMer = new Metrics();
-            Stopwatch sw2 = Stopwatch.startNew();
-            MergeSort.sort(copy2, new CountingComparator<>(byName, mMer));
-            mMer.setNanos(sw2.stopNanos());
+            // MergeSort
+            Vec<Drug> v2 = copyOf(data);
+            shuffle(v2);
+            long t2 = now();
+            long merComparisons = sortAndCountComparisonsMerge(v2, byName);
+            long dt2 = now() - t2;
 
-            out.append(line2("- InsertionSort: comparisons=%d, time=%.3f ms\n", mIns.getComparisons(), mIns.millis()));
-            out.append(line2("- MergeSort:     comparisons=%d, time=%.3f ms\n\n", mMer.getComparisons(), mMer.millis()));
+            out.append("- InsertionSort: comparisons=").append(insComparisons)
+                    .append(", time=").append(toMillis(dt1)).append(" ms\n");
+            out.append("- MergeSort:     comparisons=").append(merComparisons)
+                    .append(", time=").append(toMillis(dt2)).append(" ms\n\n");
 
             out.append("Theoretical\n");
             out.append("- InsertionSort:  O(n^2) worst, Ω(n) best (nearly-sorted).\n");
             out.append("- MergeSort:      O(n log n) time, Ω(n log n); stable; O(n) extra space.\n\n");
         }
 
-        // --------------- Searching by CODE -----------------
+        // ---------- Searching (binary search vs hashmap) ----------
         out.append("Searching (by code)\n");
-        if (data.size() == 0) {
+        if (data.size() == 0){
             out.append("No data to search.\n\n");
         } else {
-            Vec<Drug> sortedByCode = copyOf(data);
-            Comparator<Drug> byCode = (a,b) -> a.getCode().compareToIgnoreCase(b.getCode());
-            MergeSort.sort(sortedByCode, byCode);
+            Vec<Drug> byCode = copyOf(data);
+            Comparator<Drug> cmpCode = (a,b) -> compareIgnoreCase(a.getCode(), b.getCode());
+            MergeSort.sort(byCode, cmpCode);
 
-            String[] keys = sampleKeys(sortedByCode);
+            // Build sample keys: up to 10 + a missing one
+            String[] keys = sampleKeys(byCode);
 
-            Metrics mBin = new Metrics();
-            Comparator<Drug> countingByCode = new CountingComparator<>(byCode, mBin);
-            for (int i = 0; i < keys.length; i++) {
-                Drug probe = keyProbe(keys[i]);
-                BinarySearch.indexOf(sortedByCode, probe, countingByCode);
+            // Binary search comparisons (count via comparator wrapper)
+            CountingComparator<Drug> countCmp = new CountingComparator<>(cmpCode);
+            for (int i=0;i<keys.length;i++){
+                Drug probe = new Drug(keys[i], "_", 0.0, 0, LocalDate.now(), 0);
+                BinarySearch.indexOf(byCode, probe, countCmp);
             }
+            long binComparisons = countCmp.count;
 
-            Metrics mHM = new Metrics();
-            Stopwatch swHM = Stopwatch.startNew();
-            for (int i = 0; i < keys.length; i++) { drugs.indexByCode().get(keys[i]); }
-            mHM.setNanos(swHM.stopNanos());
+            // Hash map lookups timing (average O(1))
+            long t0 = now();
+            for (int i=0;i<keys.length;i++){ drugsSvc.indexByCode().get(keys[i]); }
+            long dt = now() - t0;
 
-            out.append(line2("- BinarySearch (on code): comparisons≈%d over %d lookups\n", mBin.getComparisons(), keys.length));
-            out.append(line2("- HashMap lookup:         time=%.3f ms over %d lookups\n\n", mHM.millis(), keys.length));
+            out.append("- BinarySearch (on code): comparisons≈")
+                    .append(binComparisons).append(" over ").append(keys.length).append(" lookups\n");
+            out.append("- HashMap lookup:        time=")
+                    .append(toMillis(dt)).append(" ms over ").append(keys.length).append(" lookups\n\n");
 
             out.append("Theoretical\n");
             out.append("- Binary search: O(log n), Ω(1) best; requires sorted data.\n");
             out.append("- Hash map:      O(1) average, O(n) worst with collisions.\n\n");
         }
 
-        // --------------- Name contains (linear scan) ---------------
+        // ---------- Linear scan: name contains ----------
         out.append("Searching (name contains)\n");
-        if (data.size() == 0) {
+        if (data.size() == 0){
             out.append("No data to search.\n\n");
         } else {
             String term = data.get(0).getName();
+            term = (term == null) ? "" : term;
             term = term.length() > 3 ? term.substring(0,3).toLowerCase() : term.toLowerCase();
-            Metrics mLin = new Metrics();
-            Stopwatch sw = Stopwatch.startNew();
-            int hits = 0;
-            for (int i = 0; i < data.size(); i++) {
-                mLin.addComparisons(1); // visited one element
+
+            int visited = 0, hits = 0;
+            long t = now();
+            for (int i=0;i<data.size();i++){
+                visited++;
                 Drug d = data.get(i);
                 if (indexOfIgnoreCase(d.getName(), term) >= 0) hits++;
             }
-            mLin.setNanos(sw.stopNanos());
-            out.append(line3("- Linear scan: elements_visited=%d, hits=%d, time=%.3f ms\n\n",
-                    mLin.getComparisons(), hits, mLin.millis()));
+            long dt = now() - t;
+            out.append("- Linear scan: elements_visited=").append(visited)
+                    .append(", hits=").append(hits)
+                    .append(", time=").append(toMillis(dt)).append(" ms\n\n");
 
             out.append("Theoretical\n");
             out.append("- Linear search: O(n) worst/avg, Ω(1) best if first item matches.\n\n");
         }
 
-        // --------------- DS notes ---------------
+        // ---------- Qualitative DS notes ----------
         out.append("Other structures (qualitative complexity)\n");
         out.append("- LinkedQueue enqueue/dequeue: O(1).\n");
         out.append("- LinkedStack push/pop:        O(1).\n");
@@ -122,83 +128,99 @@ public final class PerformanceReport {
 
         out.append("Notes\n");
         out.append("- Times depend on dataset size and machine.\n");
-        out.append("- Comparisons counted via wrappers around custom Comparator.\n");
+        out.append("- Comparisons counted via a wrapper around custom Comparator.\n");
 
-        return ReportsFS.writePerformance(out.toString());
+        return ReportsFS.writeReport("performance.txt", out.toString());
     }
 
-    // ---------------- Helpers ----------------
-
-    private static Vec<Drug> copyOf(Vec<Drug> v) {
+    // -------- helpers (no java.util) --------
+    private static Vec<Drug> copyOf(Vec<Drug> v){
         Vec<Drug> c = new Vec<>(v.size());
-        for (int i = 0; i < v.size(); i++) c.add(v.get(i));
+        for (int i=0;i<v.size();i++) c.add(v.get(i));
         return c;
     }
 
-    /** Fisher–Yates shuffle using Math.random(), in-place on Vec. */
-    private static <T> void shuffleVec(Vec<T> v) {
-        for (int i = v.size() - 1; i > 0; i--) {
-            int j = (int)Math.floor(Math.random() * (i + 1));
-            T tmp = v.get(i);
+    /** Fisher–Yates shuffle in-place on Vec using Math.random(). */
+    private static void shuffle(Vec<Drug> v){
+        for (int i=v.size()-1;i>0;i--){
+            int j = (int)Math.floor(Math.random()*(i+1));
+            Drug tmp = v.get(i);
             v.set(i, v.get(j));
             v.set(j, tmp);
         }
     }
 
-    private static String[] sampleKeys(Vec<Drug> sorted) {
-        int n = sorted.size();
+    private static String[] sampleKeys(Vec<Drug> sortedByCode){
+        int n = sortedByCode.size();
         int take = n < 10 ? n : 10;
-        String[] keys = new String[take + 1]; // +1 missing
-        for (int i = 0; i < take; i++) keys[i] = sorted.get(i).getCode();
+        String[] keys = new String[take + 1];
+        for (int i=0;i<take;i++) keys[i] = sortedByCode.get(i).getCode();
         keys[take] = "__MISSING__";
         return keys;
     }
 
-    private static Drug keyProbe(String code) {
-        return new Drug(code, "_", 0.0, 0, LocalDate.now(), 0);
+    private static long sortAndCountComparisonsInsertion(Vec<Drug> v, Comparator<Drug> base){
+        CountingComparator<Drug> c = new CountingComparator<>(base);
+        InsertionSort.sort(v, c);
+        return c.count;
+    }
+    private static long sortAndCountComparisonsMerge(Vec<Drug> v, Comparator<Drug> base){
+        CountingComparator<Drug> c = new CountingComparator<>(base);
+        MergeSort.sort(v, c);
+        return c.count;
     }
 
-    /** Case-insensitive substring search without java.util. */
-    private static int indexOfIgnoreCase(String haystack, String needle) {
-        if (needle == null || needle.length() == 0) return 0;
-        if (haystack == null) return -1;
-        int n = haystack.length(), m = needle.length();
-        for (int i = 0; i + m <= n; i++) {
-            int k = 0; while (k < m) {
-                char a = toLower(haystack.charAt(i + k));
-                char b = toLower(needle.charAt(k));
+    private static int compareIgnoreCase(String a, String b){
+        if (a == null && b == null) return 0;
+        if (a == null) return -1;
+        if (b == null) return 1;
+        int na=a.length(), nb=b.length();
+        int n = na < nb ? na : nb;
+        for (int i=0;i<n;i++){
+            char ca = toLower(a.charAt(i));
+            char cb = toLower(b.charAt(i));
+            if (ca != cb) return (ca < cb) ? -1 : 1;
+        }
+        if (na == nb) return 0;
+        return (na < nb) ? -1 : 1;
+    }
+    private static char toLower(char c){ return (c>='A'&&c<='Z')?(char)(c+32):c; }
+
+    /** naive case-insensitive substring match; returns index or -1 */
+    private static int indexOfIgnoreCase(String hay, String needleLower){
+        if (hay == null || needleLower == null) return -1;
+        int n = hay.length(), m = needleLower.length();
+        if (m == 0) return 0;
+        for (int i=0;i+m<=n;i++){
+            int k=0; while(k<m){
+                char a = toLower(hay.charAt(i+k));
+                char b = needleLower.charAt(k);
                 if (a != b) break; k++;
             }
-            if (k == m) return i;
+            if (k==m) return i;
         }
         return -1;
     }
-    private static char toLower(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c; }
 
     private static final class CountingComparator<T> implements Comparator<T> {
-        private final Comparator<T> base; private final Metrics metrics;
-        CountingComparator(Comparator<T> base, Metrics m){ this.base=base; this.metrics=m; }
-        @Override public int compare(T a, T b){ metrics.addComparisons(1); return base.compare(a,b); }
+        private final Comparator<T> base;
+        long count;
+        CountingComparator(Comparator<T> b){ this.base=b; }
+        @Override public int compare(T a, T b){ count++; return base.compare(a,b); }
     }
 
-    private static String line2(String fmt, Object a, Object b) {
-        String s = fmt;
-        if (s.contains("%d")) s = s.replaceFirst("%d", String.valueOf(a));
-        if (s.contains("%.3f")) s = s.replaceFirst("%\\.3f", toFixed3(b));
-        else if (s.contains("%d")) s = s.replaceFirst("%d", String.valueOf(b));
-        return s;
-    }
-    private static String line3(String fmt, Object a, Object b, Object c) {
-        String s = fmt;
-        if (s.contains("%d")) s = s.replaceFirst("%d", String.valueOf(a));
-        if (s.contains("%d")) s = s.replaceFirst("%d", String.valueOf(b));
-        if (s.contains("%.3f")) s = s.replaceFirst("%\\.3f", toFixed3(c));
-        else if (s.contains("%d")) s = s.replaceFirst("%d", String.valueOf(c));
-        return s;
-    }
-    private static String toFixed3(Object v) {
-        double x = 0.0; try { x = (v instanceof Number) ? ((Number)v).doubleValue() : Double.parseDouble(String.valueOf(v)); } catch (Exception ignored) {}
-        long m = Math.round(x * 1000.0); String sign = m < 0 ? "-" : ""; if (m < 0) m = -m; long i = m/1000; long f = m%1000;
-        StringBuilder sb = new StringBuilder(); sb.append(sign).append(i).append('.'); if (f<100) sb.append('0'); if (f<10) sb.append('0'); sb.append(f); return sb.toString();
+    private static long now(){ return System.nanoTime(); }
+    private static String toMillis(long nanos){
+        double ms = ((double)nanos)/1_000_000.0;
+        long m = Math.round(ms * 1000.0); // 3dp
+        String sign = m<0?"-":"";
+        if (m<0) m=-m;
+        long i = m/1000; long f = m%1000;
+        StringBuilder sb=new StringBuilder();
+        sb.append(sign).append(i).append('.');
+        if (f<100) sb.append('0');
+        if (f<10) sb.append('0');
+        sb.append(f);
+        return sb.toString();
     }
 }

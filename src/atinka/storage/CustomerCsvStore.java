@@ -3,59 +3,108 @@ package atinka.storage;
 import atinka.dsa.Vec;
 import atinka.model.Customer;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 
+/**
+ * customers.csv columns:
+ * id,name,contact
+ */
 public final class CustomerCsvStore {
-    private static final int COLS = 3; // id|name|contact
 
-    public Vec<Customer> loadAll() {
+    public Vec<Customer> load(){
         Vec<Customer> out = new Vec<>();
         Path p = PathsFS.customersPath();
-        int skipped = 0;
-        try {
-            if (!Files.exists(p)) return out;
-            try (BufferedReader r = Files.newBufferedReader(p)) {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    if (line.length() == 0) continue;
-                    String[] c = CsvCodec.split(line, COLS);
-                    String id=c[0], name=c[1];
-                    if (id.length()==0 || name.length()==0) { skipped++; continue; }
-                    String contact=c[2];
-                    Customer cu = new Customer(id,name,contact);
-                    out.add(cu);
-                }
-            }
-        } catch (Exception ex) {
-            System.out.println("[WARN] Failed reading customers: " + ex.getMessage());
+        if (!Files.exists(p)) return out;
+        String[] lines = readAllLines(p);
+        for (int i = 0; i < lines.length; i++){
+            String ln = lines[i].trim();
+            if (ln.length() == 0) continue;
+            if (ln.startsWith("#")) continue;
+            String[] cols = splitCsv(ln, 3);
+            if (cols == null) continue;
+            Customer c = new Customer(cols[0], cols[1], cols[2]);
+            out.add(c);
         }
-        if (skipped > 0) System.out.println("[WARN] Skipped " + skipped + " malformed customer row(s).");
         return out;
     }
 
-    public void saveAll(Vec<Customer> all) {
+    public void saveAll(Vec<Customer> src){
         Path p = PathsFS.customersPath();
-        Path tmp = p.resolveSibling(p.getFileName().toString() + ".tmp");
-        Path bak = p.resolveSibling(p.getFileName().toString() + ".bak");
-        try (BufferedWriter w = Files.newBufferedWriter(tmp)) {
-            for (int i = 0; i < all.size(); i++) {
-                Customer c = all.get(i);
-                String[] cols = new String[]{ c.getId(), c.getName(), c.getContact() };
-                w.write(CsvCodec.join(cols));
-                w.newLine();
-            }
-        } catch (Exception ex) {
-            System.out.println("[WARN] Failed writing tmp customers: " + ex.getMessage());
-            return;
+        Path tmp = p.resolveSibling("customers.csv.tmp");
+        StringBuilder sb = new StringBuilder();
+        sb.append("# id,name,contact\n");
+        for (int i=0;i<src.size();i++){
+            Customer c = src.get(i);
+            sb.append(esc(c.getId())).append(',')
+                    .append(esc(c.getName())).append(',')
+                    .append(esc(c.getContact())).append('\n');
         }
+        byte[] bytes;
+        try { bytes = sb.toString().getBytes("UTF-8"); } catch(Exception e){ bytes = new byte[0]; }
         try {
-            if (Files.exists(p)) Files.copy(p, bak, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            Files.move(tmp, p, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-        } catch (Exception moveEx) {
-            try { Files.move(tmp, p, java.nio.file.StandardCopyOption.REPLACE_EXISTING); } catch (Exception ignore) {}
+            Files.write(tmp, bytes);
+            Files.move(tmp, p, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (Exception e){
+            try { Files.move(tmp, p, StandardCopyOption.REPLACE_EXISTING); } catch(Exception ignored){}
         }
+    }
+
+    // ---------- helpers ----------
+
+    private String[] readAllLines(Path p){
+        try {
+            byte[] b = Files.readAllBytes(p);
+            String s = new String(b, "UTF-8");
+            s = s.replace("\r\n", "\n").replace('\r', '\n');
+            return splitLines(s);
+        } catch (Exception e){ return new String[0]; }
+    }
+
+    private String[] splitLines(String s){
+        int count = 1;
+        for (int i=0;i<s.length();i++) if (s.charAt(i)=='\n') count++;
+        String[] out = new String[count];
+        int idx=0, start=0;
+        for (int i=0;i<s.length();i++){
+            if (s.charAt(i)=='\n'){
+                out[idx++]=s.substring(start,i);
+                start=i+1;
+            }
+        }
+        out[idx]=s.substring(start);
+        return out;
+    }
+
+    private String[] splitCsv(String line, int n){
+        String[] out = new String[n];
+        int idx=0,start=0;
+        for (int i=0;i<line.length();i++){
+            if (line.charAt(i)==','){
+                out[idx++]=safeSub(line,start,i);
+                start=i+1;
+                if (idx==n-1) break;
+            }
+        }
+        out[idx++]=safeSub(line,start,line.length());
+        if (idx!=n) return null;
+        return out;
+    }
+
+    private String safeSub(String s,int a,int b){
+        if (a<0) a=0; if (b<a) b=a; if (b>s.length()) b=s.length();
+        return s.substring(a,b);
+    }
+
+    private String esc(String s){
+        if (s==null) return "";
+        StringBuilder b=new StringBuilder(s.length());
+        for (int i=0;i<s.length();i++){
+            char c=s.charAt(i);
+            if (c==',' || c=='\n' || c=='\r') continue;
+            b.append(c);
+        }
+        return b.toString().trim();
     }
 }

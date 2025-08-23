@@ -1,2 +1,4 @@
-SUP20250810-00001|HealthPlus|Adenta|2|0541112222
-SUP20250810-00002|PharmaLogix|Madina|5|0243334444
+# id,name,contact,location,turnaroundDays
+S001,Obed,0543820668,Accra,1
+S002,Nelson,+233543820668,Kumasi,1
+S003,Eunice,0246540493,Tamale,3

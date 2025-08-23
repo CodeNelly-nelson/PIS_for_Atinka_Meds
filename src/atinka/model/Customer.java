@@ -1,32 +1,28 @@
 package atinka.model;
 
-/** Customer model without java.util. */
-public class Customer {
-    private final String id;   // unique
+/**
+ * Customer profile
+ *  - id: simple ID like C0001
+ *  - name
+ *  - contact
+ */
+public final class Customer {
+    private final String id;
     private String name;
     private String contact;
 
     public Customer(String id, String name, String contact) {
-        if (id == null || name == null) throw new IllegalArgumentException("Null fields not allowed");
+        if (id == null || id.trim().isEmpty()) throw new IllegalArgumentException("id required");
+        if (name == null || name.trim().isEmpty()) throw new IllegalArgumentException("name required");
         this.id = id.trim();
         this.name = name.trim();
         this.contact = contact == null ? "" : contact.trim();
     }
 
-    public String getId() { return id; }
-    public String getName() { return name; }
-    public void setName(String name) { if (name == null) throw new IllegalArgumentException(); this.name = name.trim(); }
-    public String getContact() { return contact; }
-    public void setContact(String c) { this.contact = c == null ? "" : c.trim(); }
+    public String getId(){ return id; }
+    public String getName(){ return name; }
+    public String getContact(){ return contact; }
 
-    @Override
-    public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Customer{")
-                .append("id=").append(id)
-                .append(", name=").append(name)
-                .append(", contact=").append(contact)
-                .append("}");
-        return sb.toString();
-    }
+    public void setName(String n){ if (n != null && n.trim().length() > 0) name = n.trim(); }
+    public void setContact(String c){ contact = c == null ? "" : c.trim(); }
 }

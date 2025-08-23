@@ -1,61 +1,38 @@
 package atinka.storage;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.StandardCopyOption;
 
-/** Report file utilities: single-file per type, atomic overwrite and read. */
+/** Atomic write helpers for report files. */
 public final class ReportsFS {
-    private ReportsFS() {}
+    private ReportsFS(){}
 
-    public static Path performancePath() { return PathsFS.reportsDir().resolve("performance.txt"); }
-    public static Path salesPath()       { return PathsFS.reportsDir().resolve("sales.txt"); }
-
-    private static void ensureDirs() { PathsFS.ensure(); }
-
-    public static Path writePerformance(String content) {
-        return writeSingleton(performancePath(), content);
-    }
-
-    public static Path writeSales(String content) {
-        return writeSingleton(salesPath(), content);
-    }
-
-    public static String readPerformance() {
-        return readAllOrNull(performancePath());
-    }
-
-    public static String readSales() {
-        return readAllOrNull(salesPath());
-    }
-
-    private static Path writeSingleton(Path target, String content) {
-        ensureDirs();
-        Path tmp = target.resolveSibling(target.getFileName().toString() + ".tmp");
+    public static Path writeReport(String fileName, String content){
+        Path out = PathsFS.reportPath(fileName);
+        Path tmp = out.resolveSibling(out.getFileName().toString() + ".tmp");
         try {
-            Files.write(tmp, (content == null ? "" : content).getBytes(StandardCharsets.UTF_8),
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-            Files.move(tmp, target,
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-            return target;
-        } catch (Exception e) {
+            byte[] bytes = content.getBytes("UTF-8");
+            Files.write(tmp, bytes);
+            Files.move(tmp, out, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            return out;
+        } catch (Exception e){
+            // Fallback: non-atomic move
             try {
-                Files.write(target, (content == null ? "" : content).getBytes(StandardCharsets.UTF_8),
-                        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+                Files.move(tmp, out, StandardCopyOption.REPLACE_EXISTING);
             } catch (Exception ignored) {}
-            return target;
+            return out;
         }
     }
 
-    private static String readAllOrNull(Path p) {
+    public static String readReport(String fileName){
+        Path p = PathsFS.reportPath(fileName);
         try {
-            if (!Files.exists(p)) return null;
+            if (!Files.exists(p)) return "";
             byte[] b = Files.readAllBytes(p);
-            return new String(b, StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            return null;
+            return new String(b, "UTF-8");
+        } catch (Exception e){
+            return "";
         }
     }
 }

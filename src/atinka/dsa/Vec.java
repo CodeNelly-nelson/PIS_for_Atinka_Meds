@@ -1,34 +1,81 @@
 package atinka.dsa;
 
-// Dynamic Array
+/**
+ * Vec<T> — simple dynamic array (no java.util).
+ * - Amortized O(1) append
+ * - O(1) get/set
+ * - O(n) insert/removeAt
+ *
+ * NOTE: Not final so wrappers (e.g., counting) can extend if needed.
+ */
+public class Vec<T> {
+    private Object[] a;
+    private int n;
 
-public final class Vec<T> {
-    private Object[] a; private int n;
     public Vec() { this(8); }
-    public Vec(int cap) { a = new Object[Math.max(1, cap)]; }
+
+    public Vec(int capacity) {
+        if (capacity < 0) capacity = 0;
+        int cap = 1;
+        while (cap < Math.max(1, capacity)) cap <<= 1;
+        a = new Object[cap];
+        n = 0;
+    }
 
     public int size() { return n; }
     public boolean isEmpty() { return n == 0; }
 
     @SuppressWarnings("unchecked")
-    public T get(int i) { if (i<0||i>=n) throw new IndexOutOfBoundsException(); return (T)a[i]; }
+    public T get(int index) {
+        checkIndex(index);
+        return (T) a[index];
+    }
 
-    public void set(int i, T v) { if (i<0||i>=n) throw new IndexOutOfBoundsException(); a[i]=v; }
+    public void set(int index, T value) {
+        checkIndex(index);
+        a[index] = value;
+    }
 
-    public void add(T v) { ensure(n+1); a[n++]=v; }
+    public void add(T value) {
+        ensureCapacity(n + 1);
+        a[n++] = value;
+    }
 
-    public void insert(int i, T v) {
-        if (i<0||i>n) throw new IndexOutOfBoundsException(); ensure(n+1);
-        for (int k=n; k>i; k--) a[k]=a[k-1]; a[i]=v; n++;
+    public void insert(int index, T value) {
+        if (index < 0 || index > n)
+            throw new IndexOutOfBoundsException("insert index " + index + " out of [0," + n + "]");
+        ensureCapacity(n + 1);
+        for (int i = n; i > index; i--) a[i] = a[i - 1];
+        a[index] = value;
+        n++;
     }
 
     @SuppressWarnings("unchecked")
-    public T removeAt(int i) {
-        if (i<0||i>=n) throw new IndexOutOfBoundsException();
-        T old=(T)a[i]; for (int k=i; k<n-1; k++) a[k]=a[k+1]; a[--n]=null; return old;
+    public T removeAt(int index) {
+        checkIndex(index);
+        T old = (T) a[index];
+        for (int i = index; i < n - 1; i++) a[i] = a[i + 1];
+        a[n - 1] = null;
+        n--;
+        return old;
     }
 
-    public void clear() { for(int i=0;i<n;i++) a[i]=null; n=0; }
+    public void clear() {
+        for (int i = 0; i < n; i++) a[i] = null;
+        n = 0;
+    }
 
-    private void ensure(int cap) { if (cap<=a.length) return; int m=a.length<<1; while(m<cap) m<<=1; Object[] b=new Object[m]; System.arraycopy(a,0,b,0,n); a=b; }
+    private void ensureCapacity(int needed) {
+        if (needed <= a.length) return;
+        int cap = a.length == 0 ? 1 : a.length;
+        while (cap < needed) cap <<= 1;
+        Object[] b = new Object[cap];
+        for (int i = 0; i < n; i++) b[i] = a[i];
+        a = b;
+    }
+
+    private void checkIndex(int index) {
+        if (index < 0 || index >= n)
+            throw new IndexOutOfBoundsException("index " + index + " out of [0," + (n - 1) + "]");
+    }
 }

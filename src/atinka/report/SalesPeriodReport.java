@@ -10,167 +10,189 @@ import atinka.service.DrugService;
 import atinka.storage.ReportsFS;
 import atinka.storage.SaleLogCsv;
 
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Sales + Accounting report for a specified period (inclusive).
- * Source: SaleLogCsv.readAll() -> SaleTxn[]
- * Writes a single file: data/reports/sales.txt
+ * Accounting / sales report for a specified period [from, to].
+ * Output goes to data/reports/sales_period.txt (single file, overwritten).
  */
 public final class SalesPeriodReport {
     private SalesPeriodReport(){}
 
-    public static Path generate(DrugService drugs, SaleLogCsv sales, LocalDateTime from, LocalDateTime to) {
-        SaleTxn[] all = sales.readAll();
+    public static java.nio.file.Path generate(LocalDateTime from, LocalDateTime to,
+                                              SaleLogCsv sales, DrugService drugs){
+        if (from == null) from = LocalDateTime.MIN.plusYears(1); // avoid MIN overflow printing
+        if (to == null)   to   = LocalDateTime.MAX.minusYears(1);
 
-        // ---------- accumulate ----------
-        double totalRevenue = 0.0;
-        int totalUnits = 0;
-        int transactions = 0;
-
-        // per-drug accumulation: code -> Tot
-        HashMapOpen<Tot> perDrug = new HashMapOpen<>();
-        // per-day accumulation: yyyy-MM-dd -> revenue
-        HashMapOpen<DoubleBox> perDay = new HashMapOpen<>();
-
-        for (int i=0;i<all.length;i++){
-            SaleTxn s = all[i];
-            if (s == null) continue;
+        // 1) Read + filter
+        Vec<SaleTxn> all = sales.readAll();
+        Vec<SaleTxn> filt = new Vec<>();
+        for (int i=0;i<all.size();i++){
+            SaleTxn s = all.get(i);
             LocalDateTime ts = s.getTimestamp();
-            if (ts.isBefore(from) || ts.isAfter(to)) continue;
-
-            transactions++;
-            totalRevenue += s.getTotal();
-            totalUnits += s.getQty();
-
-            // per drug
-            Tot t = perDrug.get(s.getDrugCode());
-            if (t == null) {
-                Drug d = drugs.getByCode(s.getDrugCode());
-                String name = (d == null) ? "" : d.getName();
-                t = new Tot(s.getDrugCode(), name);
-                perDrug.put(s.getDrugCode(), t);
+            if (ts == null) continue;
+            if ((ts.isAfter(from) || ts.isEqual(from)) && (ts.isBefore(to) || ts.isEqual(to))){
+                filt.add(s);
             }
-            t.qty += s.getQty();
-            t.revenue += s.getTotal();
-
-            // per day
-            String dayKey = ts.toLocalDate().toString();
-            DoubleBox db = perDay.get(dayKey);
-            if (db == null) { db = new DoubleBox(); perDay.put(dayKey, db); }
-            db.value += s.getTotal();
         }
 
-        // ---------- per-drug vec + sort by revenue desc ----------
-        Vec<Tot> rows = new Vec<>();
-        perDrug.forEach((code, t) -> { if (t != null) rows.add(t); });
-        MergeSort.sort(rows, new Comparator<Tot>() {
-            @Override public int compare(Tot a, Tot b) {
-                int c = Double.compare(b.revenue, a.revenue); // desc
-                if (c != 0) return c;
-                return a.code.compareToIgnoreCase(b.code);
-            }
-        });
+        // 2) Accumulate totals, per-drug, per-day
+        Totals grand = new Totals();
+        HashMapOpen<Acc> perDrug = new HashMapOpen<>(64);
+        HashMapOpen<Day> perDay = new HashMapOpen<>(64);
 
-        // ---------- per-day vec in chronological order ----------
-        Vec<DayLine> days = new Vec<>();
-        LocalDate d = from.toLocalDate();
-        LocalDate end = to.toLocalDate();
-        while (!d.isAfter(end)) {
-            String key = d.toString();
-            DoubleBox box = perDay.get(key);
-            double v = (box == null) ? 0.0 : box.value;
-            days.add(new DayLine(key, v));
-            d = d.plusDays(1);
+        for (int i=0;i<filt.size();i++){
+            SaleTxn s = filt.get(i);
+            grand.count++;
+            grand.units += s.getQty();
+            grand.revenue += s.getTotal();
+
+            // per-drug
+            String code = s.getCode()==null? "": s.getCode();
+            Acc a = perDrug.get(code);
+            if (a == null){ a = new Acc(); a.code = code; a.qty = 0; a.revenue = 0; perDrug.put(code, a); }
+            a.qty += s.getQty();
+            a.revenue += s.getTotal();
+
+            // per-day
+            String day = toDayKey(s.getTimestamp());
+            Day d = perDay.get(day);
+            if (d == null){ d = new Day(); d.day = day; d.revenue = 0; perDay.put(day, d); }
+            d.revenue += s.getTotal();
         }
 
-        // ---------- render ----------
+        // 3) Convert perDrug and perDay to Vecs
+        Vec<Acc> rows = new Vec<>();
+        perDrug.forEach((k,v) -> rows.add(v));
+        // enrich with drug name if available
+        for (int i=0;i<rows.size();i++){
+            Acc a = rows.get(i);
+            Drug d = drugs.getByCode(a.code);
+            a.name = (d==null? "" : d.getName());
+        }
+
+        Vec<Day> days = new Vec<>();
+        perDay.forEach((k,v) -> days.add(v));
+
+        // 4) Sort per-drug by revenue desc; per-day by ascending date (lex OK)
+        Comparator<Acc> byRevDesc = (x,y) -> {
+            double diff = x.revenue - y.revenue;
+            if (diff < 0) return 1;
+            if (diff > 0) return -1;
+            // tie-break by name then code
+            int c = compareIgnoreCase(x.name, y.name);
+            if (c != 0) return c;
+            return compareIgnoreCase(x.code, y.code);
+        };
+        MergeSort.sort(rows, byRevDesc);
+
+        Comparator<Day> byDayAsc = (x,y) -> compareIgnoreCase(x.day, y.day);
+        MergeSort.sort(days, byDayAsc);
+
+        // 5) Emit
         StringBuilder out = new StringBuilder();
         out.append("Atinka Meds — Sales & Accounting Report\n");
-        out.append("Generated: ").append(LocalDateTime.now()).append("\n");
-        out.append("Period: ").append(from).append("  to  ").append(to).append("\n\n");
+        out.append("Period: ").append(from).append("  to  ").append(to).append("\n");
+        out.append("Generated: ").append(LocalDateTime.now()).append("\n\n");
 
         out.append("Summary\n");
-        out.append("- Transactions: ").append(transactions).append("\n");
-        out.append("- Units sold:   ").append(totalUnits).append("\n");
-        out.append("- Revenue:      ").append(toFixed2(totalRevenue)).append("\n");
-        out.append("- Avg ticket:   ").append(transactions==0 ? "0.00" : toFixed2(totalRevenue / transactions)).append("\n\n");
+        out.append("- Transactions: ").append(grand.count).append("\n");
+        out.append("- Units sold:   ").append(grand.units).append("\n");
+        out.append("- Revenue:      ").append(toFixed2(grand.revenue)).append("\n\n");
 
-        out.append("Per-Drug Breakdown (sorted by revenue desc)\n");
-        if (rows.size() == 0) {
-            out.append("  No sales in this period.\n\n");
-        } else {
-            out.append(pad("CODE", 10)).append(pad("NAME", 28))
-                    .append(padRight("QTY", 8)).append(padRight("REVENUE", 10)).append("\n");
-            for (int i=0;i<rows.size();i++){
-                Tot t2 = rows.get(i);
-                out.append(pad(t2.code,10))
-                        .append(pad(trunc(t2.name,28),28))
-                        .append(padRight(String.valueOf(t2.qty),8))
-                        .append(padRight(toFixed2(t2.revenue),10))
-                        .append("\n");
-            }
-            out.append("\n");
+        out.append("Per-drug breakdown (sorted by revenue desc)\n");
+        out.append(StringPad.padRight("CODE", 10)).append("  ")
+                .append(StringPad.padRight("NAME", 28)).append("  ")
+                .append(StringPad.padLeft("QTY", 6)).append("  ")
+                .append(StringPad.padLeft("REVENUE", 10)).append("\n");
+        for (int i=0;i<rows.size();i++){
+            Acc a = rows.get(i);
+            out.append(StringPad.padRight(a.code, 10)).append("  ")
+                    .append(StringPad.padRight(limit(a.name,28), 28)).append("  ")
+                    .append(StringPad.padLeft(String.valueOf(a.qty), 6)).append("  ")
+                    .append(StringPad.padLeft(toFixed2(a.revenue), 10)).append("\n");
+        }
+        out.append("\n");
+
+        out.append("Per-day revenue\n");
+        out.append(StringPad.padRight("DAY", 12)).append("  ")
+                .append(StringPad.padLeft("REVENUE", 10)).append("\n");
+        for (int i=0;i<days.size();i++){
+            Day d = days.get(i);
+            out.append(StringPad.padRight(d.day, 12)).append("  ")
+                    .append(StringPad.padLeft(toFixed2(d.revenue), 10)).append("\n");
         }
 
-        out.append("Per-Day Revenue\n");
-        if (days.size() == 0) {
-            out.append("  (none)\n");
-        } else {
-            out.append(pad("DATE", 12)).append(padRight("REVENUE", 10)).append("\n");
-            for (int i=0;i<days.size();i++){
-                DayLine dl = days.get(i);
-                out.append(pad(dl.date,12)).append(padRight(toFixed2(dl.revenue),10)).append("\n");
-            }
+        return ReportsFS.writeReport("sales_period.txt", out.toString());
+    }
+
+    // -------- models for rows --------
+    private static final class Totals { int count; int units; double revenue; }
+    private static final class Acc { String code; String name; int qty; double revenue; }
+    private static final class Day { String day; double revenue; }
+
+    // -------- helpers (no java.util) --------
+    private static String toDayKey(LocalDateTime t){
+        LocalDate d = (t==null) ? null : t.toLocalDate();
+        return d==null ? "" : d.toString(); // yyyy-mm-dd (lexical = chronological)
+    }
+
+    private static int compareIgnoreCase(String a, String b){
+        if (a == null && b == null) return 0;
+        if (a == null) return -1;
+        if (b == null) return 1;
+        int na=a.length(), nb=b.length();
+        int n = na < nb ? na : nb;
+        for (int i=0;i<n;i++){
+            char ca = toLower(a.charAt(i));
+            char cb = toLower(b.charAt(i));
+            if (ca != cb) return (ca < cb) ? -1 : 1;
         }
-
-        return ReportsFS.writeSales(out.toString());
+        if (na == nb) return 0;
+        return (na < nb) ? -1 : 1;
     }
+    private static char toLower(char c){ return (c>='A'&&c<='Z')?(char)(c+32):c; }
 
-    // -------- types --------
-    private static final class Tot {
-        final String code; String name; int qty; double revenue;
-        Tot(String code, String name){ this.code=code; this.name=name==null?"":name; }
-    }
-    private static final class DayLine {
-        final String date; final double revenue;
-        DayLine(String date, double revenue){ this.date=date; this.revenue=revenue; }
-    }
-    private static final class DoubleBox { double value; }
-
-    // -------- tiny text helpers --------
-    private static String toFixed2(double x) {
+    private static String toFixed2(double x){
         long m = Math.round(x * 100.0);
         String sign = m < 0 ? "-" : "";
         if (m < 0) m = -m;
-        long i = m/100;
-        long f = m%100;
+        long i = m / 100;
+        long f = m % 100;
         StringBuilder sb = new StringBuilder();
         sb.append(sign).append(i).append('.');
         if (f < 10) sb.append('0');
         sb.append(f);
         return sb.toString();
     }
-    private static String pad(String s, int w){
-        if (s == null) s = "";
-        if (s.length() >= w) return s;
-        StringBuilder sb = new StringBuilder(s);
-        while (sb.length() < w) sb.append(' ');
-        return sb.toString();
-    }
-    private static String padRight(String s, int w) {
-        if (s == null) s = "";
-        if (s.length() >= w) return s;
-        StringBuilder sb = new StringBuilder();
-        int spaces = w - s.length();
-        while (spaces-- > 0) sb.append(' ');
-        sb.append(s);
-        return sb.toString();
-    }
-    private static String trunc(String s, int max){
+
+    private static String limit(String s, int max){
         if (s == null) return "";
-        return s.length() <= max ? s : s.substring(0, max);
+        if (s.length() <= max) return s;
+        if (max <= 1) return s.substring(0, max);
+        return s.substring(0, max-1) + "…";
+    }
+
+    /** Tiny left/right padding helper (no java.util). */
+    private static final class StringPad {
+        static String padRight(String s, int w){
+            if (s == null) s = "";
+            int n = w - s.length();
+            if (n <= 0) return s;
+            StringBuilder b = new StringBuilder(w);
+            b.append(s);
+            for (int i=0;i<n;i++) b.append(' ');
+            return b.toString();
+        }
+        static String padLeft(String s, int w){
+            if (s == null) s = "";
+            int n = w - s.length();
+            if (n <= 0) return s;
+            StringBuilder b = new StringBuilder(w);
+            for (int i=0;i<n;i++) b.append(' ');
+            b.append(s);
+            return b.toString();
+        }
     }
 }
