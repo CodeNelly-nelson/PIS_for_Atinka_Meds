@@ -7,6 +7,7 @@ import atinka.service.DrugService;
 import atinka.service.InventoryService;
 import atinka.storage.PurchaseLogCsv;
 import atinka.util.ConsoleIO;
+import atinka.util.SimpleScreen;
 import atinka.util.Tui;
 
 import java.time.LocalDate;
@@ -18,9 +19,7 @@ public final class DrugUI {
     private final SaveHooks saver;
 
     /** SaveHooks lets the UI trigger persistence without knowing storage details. */
-    public interface SaveHooks {
-        void saveDrugs();
-    }
+    public interface SaveHooks { void saveDrugs(); }
 
     public DrugUI(DrugService drugs, InventoryService inv, PurchaseLogCsv purchaseLog, SaveHooks saver){
         this.drugs = drugs;
@@ -31,31 +30,37 @@ public final class DrugUI {
 
     public void show(){
         while (true) {
-            ConsoleIO.clearScreen();
-            ConsoleIO.printHeader("Drugs");
-            ConsoleIO.println("1) List all (by name)");
-            ConsoleIO.println("2) Add new");
-            ConsoleIO.println("3) Edit / update");
-            ConsoleIO.println("4) Link / unlink supplier");
-            ConsoleIO.println("5) Restock (record purchase)");
-            ConsoleIO.println("6) Latest 5 purchases for a drug");
-            ConsoleIO.println("7) Remove by code");
-            ConsoleIO.println("8) Low-stock alerts");
-            ConsoleIO.println("9) Top N lowest stock");
-            ConsoleIO.println("0) Back");
-            int choice = ConsoleIO.readIntInRange("Choose: ", 0, 9);
+            String[] algos = new String[]{ "Vec", "HashMapOpen", "MergeSort", "MinHeap", "Linear scan" };
+            String[] body = new String[]{
+                    " 1) List all (by name)           — MergeSort",
+                    " 2) List all (by price)          — MergeSort",
+                    " 3) Search name contains         — Linear scan",
+                    " 4) Edit / update                — HashMapOpen index",
+                    " 5) Link / unlink supplier       — HashMapOpen",
+                    " 6) Restock (record purchase)    — O(1) stock adjust; append CSV",
+                    " 7) Latest 5 purchases (by time) — MergeSort (time desc)",
+                    " 8) Remove by code               — Linear scan + HashMapOpen",
+                    " 9) Low-stock alerts (<= thr)    — Linear scan",
+                    "10) Top N lowest stock           — MinHeap",
+                    "",
+                    " 0) Back"
+            };
+            SimpleScreen.render("Drugs — Manage", algos, body);
+
+            int choice = ConsoleIO.readIntInRange("Choose: ", 0, 10);
             if (choice == 0) return;
             try {
                 switch (choice){
-                    case 1: listAll(); break;
-                    case 2: addNew(); break;
-                    case 3: edit(); break;
-                    case 4: linkUnlinkSupplier(); break;
-                    case 5: restock(); break;
-                    case 6: latestPurchases(); break;
-                    case 7: remove(); break;
-                    case 8: showAlerts(); break;
-                    case 9: showTopN(); break;
+                    case 1: listByName(); break;
+                    case 2: listByPrice(); break;
+                    case 3: searchNameContains(); break;
+                    case 4: edit(); break;
+                    case 5: linkUnlinkSupplier(); break;
+                    case 6: restock(); break;
+                    case 7: latestPurchases(); break;
+                    case 8: remove(); break;
+                    case 9: showAlerts(); break;
+                    case 10: showTopN(); break;
                 }
             } catch (Exception e){
                 Tui.toastError("Error: " + e.getMessage());
@@ -64,109 +69,60 @@ public final class DrugUI {
         }
     }
 
-    private void listAll(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Drugs — All (by name)");
+    private void listByName(){
+        SimpleScreen.render("Drugs — Sorted by Name", new String[]{"MergeSort","Vec"}, new String[0]);
         Vec<Drug> v = drugs.sortedByName();
-        ConsoleIO.println(TextPad.padRight("CODE", 10) + "  " +
-                TextPad.padRight("NAME", 28) + "  " +
-                TextPad.padLeft("PRICE", 8) + "  " +
-                TextPad.padLeft("STOCK", 6) + "  " +
-                TextPad.padLeft("THR", 4) + "  " +
-                TextPad.padRight("EXPIRY", 12));
-        for (int i=0;i<v.size();i++){
-            Drug d = v.get(i);
-            String exp = d.getExpiry()==null? "" : d.getExpiry().toString();
-            ConsoleIO.println(
-                    TextPad.padRight(d.getCode(),10) + "  " +
-                            TextPad.padRight(limit(d.getName(),28),28) + "  " +
-                            TextPad.padLeft(TextPad.toFixed2(d.getPrice()),8) + "  " +
-                            TextPad.padLeft(String.valueOf(d.getStock()),6) + "  " +
-                            TextPad.padLeft(String.valueOf(d.getThreshold()),4) + "  " +
-                            TextPad.padRight(exp,12)
-            );
-        }
+        tableHeaderPriceStock();
+        for (int i=0;i<v.size();i++) rowPriceStock(v.get(i));
         pause();
     }
 
-    private void addNew(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Add Drug");
-        String code = ConsoleIO.readLineOrCancel("Code");
-        if (code == null) return;
-        if (drugs.getByCode(code) != null){
-            Tui.toastWarn("Code already exists.");
-            pause(); return;
-        }
-        String name = ConsoleIO.readLineOrCancel("Name");
-        if (name == null) return;
-        double price = ConsoleIO.readPositiveDoubleOrCancel("Price");
-        if (Double.isNaN(price)) return;
-        int stock = ConsoleIO.readIntOrCancel("Initial stock");
-        if (stock == Integer.MIN_VALUE) return;
-        String expStr = ConsoleIO.readLine("Expiry date [YYYY-MM-DD] (0=Cancel, empty=none): ");
-        if (expStr == null || expStr.equals("0") || expStr.equalsIgnoreCase("c") || expStr.equalsIgnoreCase("cancel")) return;
-        LocalDate expiry = parseDateOrNull(expStr);
-        int thr = ConsoleIO.readIntOrCancel("Low-stock threshold");
-        if (thr == Integer.MIN_VALUE) return;
+    private void listByPrice(){
+        SimpleScreen.render("Drugs — Sorted by Price", new String[]{"MergeSort","Vec"}, new String[0]);
+        Vec<Drug> v = drugs.sortedByPrice();
+        tableHeaderPriceStock();
+        for (int i=0;i<v.size();i++) rowPriceStock(v.get(i));
+        pause();
+    }
 
-        Drug d = new Drug(code.trim(), name.trim(), price, stock, expiry, thr);
-        drugs.addDrug(d);
-        saver.saveDrugs();
-        Tui.toastSuccess("Added.");
+    private void searchNameContains(){
+        SimpleScreen.render("Search — Name Contains", new String[]{"Linear scan","Vec"}, new String[0]);
+        String term = ConsoleIO.readLineOrCancel("Term");
+        if (term == null) return;
+        Vec<Drug> v = drugs.searchNameContains(term);
+        if (v.size()==0){ Tui.toastInfo("No matches."); pause(); return; }
+        tableHeaderPriceStock();
+        for (int i=0;i<v.size();i++) rowPriceStock(v.get(i));
         pause();
     }
 
     private void edit(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Edit Drug");
+        SimpleScreen.render("Edit / Update Drug", new String[]{"HashMapOpen index"}, new String[0]);
         String code = ConsoleIO.readLineOrCancel("Code");
         if (code == null) return;
         Drug d = drugs.getByCode(code);
         if (d == null){ Tui.toastWarn("Not found."); pause(); return; }
 
         ConsoleIO.println("Editing: " + d.getCode() + " / " + d.getName());
-        ConsoleIO.println("1) Name");
-        ConsoleIO.println("2) Price");
-        ConsoleIO.println("3) Stock (absolute set)");
-        ConsoleIO.println("4) Expiry date");
-        ConsoleIO.println("5) Threshold");
-        ConsoleIO.println("0) Cancel");
+        ConsoleIO.println(" 1) Name");
+        ConsoleIO.println(" 2) Price");
+        ConsoleIO.println(" 3) Stock (absolute set)");
+        ConsoleIO.println(" 4) Expiry date");
+        ConsoleIO.println(" 5) Threshold");
+        ConsoleIO.println(" 0) Cancel");
         int c = ConsoleIO.readIntInRange("Choose: ", 0, 5);
         if (c == 0) return;
 
         switch (c){
-            case 1: {
-                String name = ConsoleIO.readLineOrCancel("New name");
-                if (name == null) return;
-                drugs.updateName(code, name);
-                break;
-            }
-            case 2: {
-                double price = ConsoleIO.readPositiveDoubleOrCancel("New price");
-                if (Double.isNaN(price)) return;
-                drugs.updatePrice(code, price);
-                break;
-            }
-            case 3: {
-                int stock = ConsoleIO.readIntOrCancel("New stock");
-                if (stock == Integer.MIN_VALUE) return;
-                drugs.updateStockAbsolute(code, stock);
-                break;
-            }
+            case 1: { String name = ConsoleIO.readLineOrCancel("New name"); if (name==null) return; drugs.updateName(code, name); } break;
+            case 2: { double price = ConsoleIO.readPositiveDoubleOrCancel("New price"); if (Double.isNaN(price)) return; drugs.updatePrice(code, price); } break;
+            case 3: { int stock = ConsoleIO.readIntOrCancel("New stock"); if (stock==Integer.MIN_VALUE) return; drugs.updateStockAbsolute(code, stock); } break;
             case 4: {
                 String s = ConsoleIO.readLine("New expiry [YYYY-MM-DD] (0=Cancel, empty=none): ");
-                if (s == null || s.equals("0") || s.equalsIgnoreCase("c") || s.equalsIgnoreCase("cancel")) return;
-                LocalDate date = parseDateOrNull(s);
-                drugs.updateExpiry(code, date);
-                break;
-            }
-            case 5: {
-                int thr = ConsoleIO.readIntOrCancel("New threshold");
-                if (thr == Integer.MIN_VALUE) return;
-                drugs.updateThreshold(code, thr);
-                break;
-            }
+                if (isCancel(s)) return;
+                drugs.updateExpiry(code, parseDateOrNull(s));
+            } break;
+            case 5: { int thr = ConsoleIO.readIntOrCancel("New threshold"); if (thr==Integer.MIN_VALUE) return; drugs.updateThreshold(code, thr); } break;
         }
         saver.saveDrugs();
         Tui.toastSuccess("Updated.");
@@ -174,16 +130,15 @@ public final class DrugUI {
     }
 
     private void linkUnlinkSupplier(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Link / Unlink Supplier");
+        SimpleScreen.render("Link / Unlink Supplier", new String[]{"HashMapOpen index"}, new String[0]);
         String code = ConsoleIO.readLineOrCancel("Drug code");
         if (code == null) return;
         Drug d = drugs.getByCode(code);
         if (d == null){ Tui.toastWarn("Drug not found."); pause(); return; }
 
-        ConsoleIO.println("1) Link supplier");
-        ConsoleIO.println("2) Unlink supplier");
-        ConsoleIO.println("0) Cancel");
+        ConsoleIO.println(" 1) Link supplier");
+        ConsoleIO.println(" 2) Unlink supplier");
+        ConsoleIO.println(" 0) Cancel");
         int c = ConsoleIO.readIntInRange("Choose: ", 0, 2);
         if (c == 0) return;
 
@@ -197,20 +152,15 @@ public final class DrugUI {
     }
 
     private void restock(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Restock (Purchase)");
+        SimpleScreen.render("Restock (Purchase)", new String[]{"O(1) stock adjust","Append CSV log"}, new String[0]);
         String code = ConsoleIO.readLineOrCancel("Drug code");
         if (code == null) return;
-        int qty = ConsoleIO.readIntOrCancel("Quantity");
-        if (qty == Integer.MIN_VALUE) return;
-        String buyer = ConsoleIO.readLineOrCancel("Buyer ID");
-        if (buyer == null) return;
-        double unit = ConsoleIO.readPositiveDoubleOrCancel("Unit cost");
-        if (Double.isNaN(unit)) return;
+        int qty = ConsoleIO.readIntOrCancel("Quantity"); if (qty==Integer.MIN_VALUE) return;
+        String buyer = ConsoleIO.readLineOrCancel("Buyer ID"); if (buyer==null) return;
+        double unit = ConsoleIO.readPositiveDoubleOrCancel("Unit cost"); if (Double.isNaN(unit)) return;
 
         PurchaseTxn t = inv.recordPurchase(code, qty, buyer, unit);
-        // Persist: append purchase, save drugs
-        purchaseLog.append(t);
+        purchaseLog.append(t); // CSV append
         saver.saveDrugs();
 
         Tui.toastSuccess("Restocked " + qty + " units. Total cost: " + TextPad.toFixed2(t.getTotal()));
@@ -218,20 +168,16 @@ public final class DrugUI {
     }
 
     private void latestPurchases(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Latest Purchases");
-        String code = ConsoleIO.readLineOrCancel("Drug code");
-        if (code == null) return;
+        SimpleScreen.render("Latest 5 Purchases (time desc)", new String[]{"MergeSort","Vec"}, new String[0]);
+        String code = ConsoleIO.readLineOrCancel("Drug code"); if (code==null) return;
         Vec<PurchaseTxn> v = inv.latestPurchases(code, 5);
-        if (v.size() == 0){
-            Tui.toastInfo("No purchases recorded for this code.");
-            pause(); return;
-        }
+        if (v.size()==0){ Tui.toastInfo("No purchases recorded."); pause(); return; }
+
         ConsoleIO.println(TextPad.padRight("TIME", 19) + "  " +
                 TextPad.padLeft("QTY", 5) + "  " +
                 TextPad.padLeft("UNIT", 8) + "  " +
-                TextPad.padLeft("TOTAL", 10) + "  " +
-                TextPad.padRight("BUYER", 10));
+                TextPad.padLeft("TOTAL",10) + "  " +
+                TextPad.padRight("BUYER",10));
         for (int i=0;i<v.size();i++){
             PurchaseTxn t = v.get(i);
             String ts = t.getTimestamp()==null? "" : t.getTimestamp().toString();
@@ -245,25 +191,21 @@ public final class DrugUI {
     }
 
     private void remove(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Remove Drug");
-        String code = ConsoleIO.readLineOrCancel("Code");
-        if (code == null) return;
+        SimpleScreen.render("Remove Drug", new String[]{"Linear scan (Vec)","HashMapOpen index"}, new String[0]);
+        String code = ConsoleIO.readLineOrCancel("Code"); if (code==null) return;
         boolean ok = drugs.removeByCode(code);
-        if (ok){ saver.saveDrugs(); Tui.toastSuccess("Removed."); }
-        else Tui.toastWarn("Not found.");
+        if (ok){ saver.saveDrugs(); Tui.toastSuccess("Removed."); } else Tui.toastWarn("Not found.");
         pause();
     }
 
     private void showAlerts(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Low-stock Alerts (<= threshold)");
+        SimpleScreen.render("Low-stock Alerts (<= threshold)", new String[]{"Linear scan","Vec"}, new String[0]);
         Vec<Drug> v = inv.currentAlerts();
         if (v.size()==0){ Tui.toastInfo("No alerts."); pause(); return; }
-        ConsoleIO.println(TextPad.padRight("CODE", 10) + "  " +
-                TextPad.padRight("NAME", 28) + "  " +
-                TextPad.padLeft("STOCK", 6) + "  " +
-                TextPad.padLeft("THR", 4));
+        ConsoleIO.println(TextPad.padRight("CODE",10) + "  " +
+                TextPad.padRight("NAME",28) + "  " +
+                TextPad.padLeft("STOCK",6) + "  " +
+                TextPad.padLeft("THR",4));
         for (int i=0;i<v.size();i++){
             Drug d = v.get(i);
             ConsoleIO.println(TextPad.padRight(d.getCode(),10) + "  " +
@@ -275,14 +217,13 @@ public final class DrugUI {
     }
 
     private void showTopN(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Top N Lowest Stock");
+        SimpleScreen.render("Top N Lowest Stock", new String[]{"MinHeap"}, new String[0]);
         int n = ConsoleIO.readIntInRange("N (1..1000): ", 1, 1000);
         Vec<Drug> v = inv.lowStockTopN(n);
         if (v.size()==0){ Tui.toastInfo("No data."); pause(); return; }
-        ConsoleIO.println(TextPad.padRight("CODE", 10) + "  " +
-                TextPad.padRight("NAME", 28) + "  " +
-                TextPad.padLeft("STOCK", 6));
+        ConsoleIO.println(TextPad.padRight("CODE",10) + "  " +
+                TextPad.padRight("NAME",28) + "  " +
+                TextPad.padLeft("STOCK",6));
         for (int i=0;i<v.size();i++){
             Drug d = v.get(i);
             ConsoleIO.println(TextPad.padRight(d.getCode(),10) + "  " +
@@ -292,18 +233,43 @@ public final class DrugUI {
         pause();
     }
 
+    // ---- table helpers
+    private void tableHeaderPriceStock(){
+        ConsoleIO.println(TextPad.padRight("CODE",10) + "  " +
+                TextPad.padRight("NAME",28) + "  " +
+                TextPad.padLeft("PRICE",8) + "  " +
+                TextPad.padLeft("STOCK",6) + "  " +
+                TextPad.padLeft("THR",4) + "  " +
+                TextPad.padRight("EXPIRY",12));
+    }
+    private void rowPriceStock(Drug d){
+        String exp = d.getExpiry()==null? "" : d.getExpiry().toString();
+        ConsoleIO.println(
+                TextPad.padRight(d.getCode(),10) + "  " +
+                        TextPad.padRight(limit(d.getName(),28),28) + "  " +
+                        TextPad.padLeft(TextPad.toFixed2(d.getPrice()),8) + "  " +
+                        TextPad.padLeft(String.valueOf(d.getStock()),6) + "  " +
+                        TextPad.padLeft(String.valueOf(d.getThreshold()),4) + "  " +
+                        TextPad.padRight(exp,12)
+        );
+    }
+
+    // ---- utils
+    private boolean isCancel(String s){
+        if (s == null) return true;
+        s = s.trim();
+        return s.equals("0") || s.equalsIgnoreCase("c") || s.equalsIgnoreCase("cancel");
+    }
     private LocalDate parseDateOrNull(String s){
         s = s == null ? "" : s.trim();
         if (s.length()==0) return null;
         try { return LocalDate.parse(s); } catch (Exception e){ return null; }
     }
-
     private String limit(String s, int n){
         if (s == null) return "";
         if (s.length() <= n) return s;
         if (n <= 1) return s.substring(0, n);
         return s.substring(0, n-1) + "…";
     }
-
     private void pause(){ ConsoleIO.readLine("Press Enter to continue..."); }
 }

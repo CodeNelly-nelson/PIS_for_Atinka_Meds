@@ -4,15 +4,14 @@ import atinka.dsa.Vec;
 import atinka.model.Customer;
 import atinka.service.CustomerService;
 import atinka.util.ConsoleIO;
+import atinka.util.SimpleScreen;
 import atinka.util.Tui;
 
 public final class CustomerUI {
     private final CustomerService svc;
     private final SaveHooks saver;
 
-    public interface SaveHooks {
-        void saveCustomers();
-    }
+    public interface SaveHooks { void saveCustomers(); }
 
     public CustomerUI(CustomerService svc, SaveHooks saver){
         this.svc = svc; this.saver = saver;
@@ -20,13 +19,17 @@ public final class CustomerUI {
 
     public void show(){
         while (true){
-            ConsoleIO.clearScreen();
-            ConsoleIO.printHeader("Customers");
-            ConsoleIO.println("1) List all");
-            ConsoleIO.println("2) Add new");
-            ConsoleIO.println("3) Update");
-            ConsoleIO.println("4) Remove");
-            ConsoleIO.println("0) Back");
+            String[] algos = new String[]{ "Vec", "HashMapOpen", "Linear scan" };
+            String[] body = new String[]{
+                    " 1) List all                  — Linear scan over Vec",
+                    " 2) Add new                   — HashMapOpen uniqueness",
+                    " 3) Update                    — HashMapOpen",
+                    " 4) Remove                    — Linear scan + HashMapOpen",
+                    "",
+                    " 0) Back"
+            };
+            SimpleScreen.render("Customers — Manage", algos, body);
+
             int c = ConsoleIO.readIntInRange("Choose: ", 0, 4);
             if (c == 0) return;
             try {
@@ -44,8 +47,7 @@ public final class CustomerUI {
     }
 
     private void listAll(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Customers — All");
+        SimpleScreen.render("Customers — All", new String[]{"Linear scan","Vec"}, new String[0]);
         Vec<Customer> v = svc.all();
         ConsoleIO.println(TextPad.padRight("ID", 8) + "  " +
                 TextPad.padRight("NAME", 26) + "  " +
@@ -60,10 +62,8 @@ public final class CustomerUI {
     }
 
     private void addNew(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Add Customer");
-        String id = ConsoleIO.readLineOrCancel("ID");
-        if (id == null) return;
+        SimpleScreen.render("Add Customer", new String[]{"HashMapOpen index"}, new String[0]);
+        String id = ConsoleIO.readLineOrCancel("ID"); if (id == null) return;
         if (svc.getById(id) != null){ Tui.toastWarn("ID exists."); pause(); return; }
         String name = ConsoleIO.readLineOrCancel("Name"); if (name == null) return;
         String contact = ConsoleIO.readLineOrCancel("Contact"); if (contact == null) return;
@@ -74,8 +74,7 @@ public final class CustomerUI {
     }
 
     private void update(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Update Customer");
+        SimpleScreen.render("Update Customer", new String[]{"HashMapOpen index"}, new String[0]);
         String id = ConsoleIO.readLineOrCancel("ID"); if (id == null) return;
         Customer c = svc.getById(id);
         if (c == null){ Tui.toastWarn("Not found."); pause(); return; }
@@ -87,8 +86,7 @@ public final class CustomerUI {
     }
 
     private void remove(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Remove Customer");
+        SimpleScreen.render("Remove Customer", new String[]{"Linear scan","HashMapOpen index"}, new String[0]);
         String id = ConsoleIO.readLineOrCancel("ID"); if (id == null) return;
         boolean ok = svc.remove(id);
         if (ok){ saver.saveCustomers(); Tui.toastSuccess("Removed."); } else Tui.toastWarn("Not found.");

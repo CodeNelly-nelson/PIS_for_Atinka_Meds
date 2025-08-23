@@ -4,15 +4,14 @@ import atinka.dsa.Vec;
 import atinka.model.Supplier;
 import atinka.service.SupplierService;
 import atinka.util.ConsoleIO;
+import atinka.util.SimpleScreen;
 import atinka.util.Tui;
 
 public final class SupplierUI {
     private final SupplierService svc;
     private final SaveHooks saver;
 
-    public interface SaveHooks {
-        void saveSuppliers();
-    }
+    public interface SaveHooks { void saveSuppliers(); }
 
     public SupplierUI(SupplierService svc, SaveHooks saver){
         this.svc = svc; this.saver = saver;
@@ -20,15 +19,19 @@ public final class SupplierUI {
 
     public void show(){
         while (true){
-            ConsoleIO.clearScreen();
-            ConsoleIO.printHeader("Suppliers");
-            ConsoleIO.println("1) List all (by name)");
-            ConsoleIO.println("2) Add new");
-            ConsoleIO.println("3) Update");
-            ConsoleIO.println("4) Remove");
-            ConsoleIO.println("5) Filter by location contains");
-            ConsoleIO.println("6) Filter by turnaround days (<=)");
-            ConsoleIO.println("0) Back");
+            String[] algos = new String[]{ "Vec", "HashMapOpen", "MergeSort", "Linear scan" };
+            String[] body = new String[]{
+                    " 1) List all (by name)                 — MergeSort",
+                    " 2) Add new                            — HashMapOpen uniqueness",
+                    " 3) Update                             — HashMapOpen",
+                    " 4) Remove                             — Linear scan + HashMapOpen",
+                    " 5) Filter by location contains        — Linear scan",
+                    " 6) Filter by turnaround days (<=)     — Linear scan",
+                    "",
+                    " 0) Back"
+            };
+            SimpleScreen.render("Suppliers — Manage", algos, body);
+
             int c = ConsoleIO.readIntInRange("Choose: ", 0, 6);
             if (c == 0) return;
             try {
@@ -48,8 +51,7 @@ public final class SupplierUI {
     }
 
     private void listAll(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Suppliers — All (by name)");
+        SimpleScreen.render("Suppliers — All (by name)", new String[]{"MergeSort","Vec"}, new String[0]);
         Vec<Supplier> v = svc.sortedByName();
         ConsoleIO.println(TextPad.padRight("ID", 8) + "  " +
                 TextPad.padRight("NAME", 26) + "  " +
@@ -68,19 +70,13 @@ public final class SupplierUI {
     }
 
     private void addNew(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Add Supplier");
-        String id = ConsoleIO.readLineOrCancel("ID");
-        if (id == null) return;
+        SimpleScreen.render("Add Supplier", new String[]{"HashMapOpen index"}, new String[0]);
+        String id = ConsoleIO.readLineOrCancel("ID"); if (id == null) return;
         if (svc.getById(id) != null){ Tui.toastWarn("ID exists."); pause(); return; }
-        String name = ConsoleIO.readLineOrCancel("Name");
-        if (name == null) return;
-        String contact = ConsoleIO.readLineOrCancel("Contact");
-        if (contact == null) return;
-        String location = ConsoleIO.readLineOrCancel("Location");
-        if (location == null) return;
-        int ta = ConsoleIO.readIntOrCancel("Turnaround days");
-        if (ta == Integer.MIN_VALUE) return;
+        String name = ConsoleIO.readLineOrCancel("Name"); if (name == null) return;
+        String contact = ConsoleIO.readLineOrCancel("Contact"); if (contact == null) return;
+        String location = ConsoleIO.readLineOrCancel("Location"); if (location == null) return;
+        int ta = ConsoleIO.readIntOrCancel("Turnaround days"); if (ta == Integer.MIN_VALUE) return;
 
         boolean ok = svc.add(new Supplier(id.trim(), name.trim(), contact.trim(), location.trim(), ta));
         if (ok){ saver.saveSuppliers(); Tui.toastSuccess("Added."); } else Tui.toastWarn("Failed.");
@@ -88,10 +84,8 @@ public final class SupplierUI {
     }
 
     private void update(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Update Supplier");
-        String id = ConsoleIO.readLineOrCancel("ID");
-        if (id == null) return;
+        SimpleScreen.render("Update Supplier", new String[]{"HashMapOpen index"}, new String[0]);
+        String id = ConsoleIO.readLineOrCancel("ID"); if (id == null) return;
         Supplier s = svc.getById(id);
         if (s == null){ Tui.toastWarn("Not found."); pause(); return; }
 
@@ -110,20 +104,16 @@ public final class SupplierUI {
     }
 
     private void remove(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Remove Supplier");
-        String id = ConsoleIO.readLineOrCancel("ID");
-        if (id == null) return;
+        SimpleScreen.render("Remove Supplier", new String[]{"Linear scan","HashMapOpen index"}, new String[0]);
+        String id = ConsoleIO.readLineOrCancel("ID"); if (id == null) return;
         boolean ok = svc.remove(id);
         if (ok){ saver.saveSuppliers(); Tui.toastSuccess("Removed."); } else Tui.toastWarn("Not found.");
         pause();
     }
 
     private void filterLocation(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Filter — Location contains");
-        String term = ConsoleIO.readLineOrCancel("Term");
-        if (term == null) return;
+        SimpleScreen.render("Filter — Location contains", new String[]{"Linear scan"}, new String[0]);
+        String term = ConsoleIO.readLineOrCancel("Term"); if (term == null) return;
         Vec<Supplier> v = svc.filterByLocationContains(term);
         if (v.size()==0){ Tui.toastInfo("No matches."); pause(); return; }
         for (int i=0;i<v.size();i++){
@@ -134,10 +124,8 @@ public final class SupplierUI {
     }
 
     private void filterTurnaround(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Filter — Turnaround <= days");
-        int d = ConsoleIO.readIntOrCancel("Max days");
-        if (d == Integer.MIN_VALUE) return;
+        SimpleScreen.render("Filter — Turnaround <= days", new String[]{"Linear scan"}, new String[0]);
+        int d = ConsoleIO.readIntOrCancel("Max days"); if (d == Integer.MIN_VALUE) return;
         Vec<Supplier> v = svc.filterByTurnaroundAtMost(d);
         if (v.size()==0){ Tui.toastInfo("No matches."); pause(); return; }
         for (int i=0;i<v.size();i++){

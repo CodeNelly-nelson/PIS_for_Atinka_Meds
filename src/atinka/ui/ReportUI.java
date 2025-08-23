@@ -4,22 +4,30 @@ import atinka.report.PerformanceReport;
 import atinka.report.SalesPeriodReport;
 import atinka.storage.ReportsFS;
 import atinka.util.ConsoleIO;
+import atinka.util.SimpleScreen;
 import atinka.util.Tui;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public final class ReportUI {
+    // Injected from AtinkaCLI constructor (static holders)
+    public static atinka.service.DrugService DRUGS;
+    public static atinka.storage.SaleLogCsv SALES;
 
     public void show(){
         while (true){
-            ConsoleIO.clearScreen();
-            ConsoleIO.printHeader("Reports");
-            ConsoleIO.println("1) Generate Performance Report");
-            ConsoleIO.println("2) Generate Sales Report (period)");
-            ConsoleIO.println("3) View last Performance Report");
-            ConsoleIO.println("4) View last Sales Report");
-            ConsoleIO.println("0) Back");
+            String[] algos = new String[]{ "MergeSort", "BinarySearch", "Vec", "HashMapOpen", "Linear scan" };
+            String[] body = new String[]{
+                    " 1) Generate Performance Report   — InsertionSort vs MergeSort; BinarySearch vs HashMapOpen",
+                    " 2) Generate Sales Report         — Linear scan aggregate; per-drug HashMapOpen; MergeSort rows",
+                    " 3) View last Performance Report",
+                    " 4) View last Sales Report",
+                    "",
+                    " 0) Back"
+            };
+            SimpleScreen.render("Reports", algos, body);
+
             int c = ConsoleIO.readIntInRange("Choose: ", 0, 4);
             if (c == 0) return;
 
@@ -37,21 +45,17 @@ public final class ReportUI {
         }
     }
 
-    // Dependencies are fetched lazily from Main via static holders (set by Main)
-    public static atinka.service.DrugService DRUGS;
-    public static atinka.storage.SaleLogCsv SALES;
-
     private void genPerf(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Generate Performance Report");
+        SimpleScreen.render("Generate Performance Report",
+                new String[]{"InsertionSort","MergeSort","BinarySearch","HashMapOpen"}, new String[0]);
         java.nio.file.Path p = PerformanceReport.generate(DRUGS);
         Tui.toastSuccess("Generated: " + p.toString());
         pause();
     }
 
     private void genSales(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Generate Sales Report (period)");
+        SimpleScreen.render("Generate Sales Report (period)",
+                new String[]{"Linear scan","HashMapOpen","MergeSort"}, new String[0]);
         String fromD = ConsoleIO.readLine("From DATE [YYYY-MM-DD] (0=Cancel): ");
         if (isCancel(fromD)) return;
         String toD = ConsoleIO.readLine("To DATE [YYYY-MM-DD] (0=Cancel): ");
@@ -66,8 +70,7 @@ public final class ReportUI {
     }
 
     private void viewPerf(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Performance Report (last)");
+        SimpleScreen.render("Performance Report (last)", new String[]{"— uses only custom DS/Algos —"}, new String[0]);
         String s = ReportsFS.readReport("performance.txt");
         if (s == null || s.trim().length()==0) Tui.toastInfo("No report yet.");
         else ConsoleIO.println(s);
@@ -75,8 +78,7 @@ public final class ReportUI {
     }
 
     private void viewSales(){
-        ConsoleIO.clearScreen();
-        ConsoleIO.printHeader("Sales Report (last)");
+        SimpleScreen.render("Sales Report (last)", new String[]{"— uses only custom DS/Algos —"}, new String[0]);
         String s = ReportsFS.readReport("sales_period.txt");
         if (s == null || s.trim().length()==0) Tui.toastInfo("No report yet.");
         else ConsoleIO.println(s);
@@ -90,20 +92,12 @@ public final class ReportUI {
     }
 
     private LocalDateTime toDateStart(String s){
-        try {
-            LocalDate d = LocalDate.parse(s.trim());
-            return d.atStartOfDay();
-        } catch (Exception e){
-            return LocalDateTime.MIN.plusYears(1);
-        }
+        try { return LocalDate.parse(s.trim()).atStartOfDay(); }
+        catch (Exception e){ return LocalDateTime.MIN.plusYears(1); }
     }
     private LocalDateTime toDateEnd(String s){
-        try {
-            LocalDate d = LocalDate.parse(s.trim());
-            return d.atTime(23,59,59);
-        } catch (Exception e){
-            return LocalDateTime.MAX.minusYears(1);
-        }
+        try { return LocalDate.parse(s.trim()).atTime(23,59,59); }
+        catch (Exception e){ return LocalDateTime.MAX.minusYears(1); }
     }
 
     private void pause(){ ConsoleIO.readLine("Press Enter to continue..."); }

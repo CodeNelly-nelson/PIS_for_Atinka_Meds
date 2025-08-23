@@ -8,14 +8,15 @@ import java.io.InputStreamReader;
  * - Auto color on capable terminals (respects NO_COLOR).
  * - Clean headers boxed with unicode; ASCII fallback if needed.
  * - Cancel-anywhere: "0" / "c" / "cancel".
+ * - Themed helpers: printHeaderThemed(...) and printBadges(...)
  */
 public final class ConsoleIO {
     private static final BufferedReader IN =
             new BufferedReader(new InputStreamReader(System.in));
 
     // Box drawing (fallback if ANSI disabled & font issues)
-    private static final char H = '─';
-    private static final char V = '│';
+    private static final char H  = '─';
+    private static final char V  = '│';
     private static final char TL = '┌';
     private static final char TR = '┐';
     private static final char BL = '└';
@@ -39,7 +40,7 @@ public final class ConsoleIO {
     }
 
     public static void println(String s) { System.out.println(s); }
-    public static void print(String s) { System.out.print(s); }
+    public static void print(String s)   { System.out.print(s);  }
 
     public static void hr(){
         if (Ansi.isEnabled()){
@@ -49,6 +50,7 @@ public final class ConsoleIO {
         }
     }
 
+    /** Default header (cyan text if color available). */
     public static void printHeader(String title) {
         String t = " " + title + " ";
         int w = Math.max(42, t.length() + 6);
@@ -57,19 +59,66 @@ public final class ConsoleIO {
         String bot = BL + repeat(H, w) + BR;
 
         if (Ansi.isEnabled()){
-            // Use green background with white bold text
-            String bg = Ansi.bg("white");
             String fg = Ansi.fg("cyan") + Ansi.bold();
-            System.out.println(bg + fg + top + Ansi.reset());
-            System.out.println(bg + fg + mid + Ansi.reset());
-            System.out.println(bg + fg + bot + Ansi.reset());
+            System.out.println(fg + top + Ansi.reset());
+            System.out.println(fg + mid + Ansi.reset());
+            System.out.println(fg + bot + Ansi.reset());
         } else {
-            // ASCII fallback
             String aa = "+" + repeat('-', w) + "+";
             System.out.println(aa);
             System.out.println("|" + center(t, w) + "|");
             System.out.println(aa);
         }
+        System.out.println();
+    }
+
+    // ------------------ THEME HELPERS ------------------
+
+    /**
+     * Themed header with chosen foreground ANSI color only (no background).
+     * Example: printHeaderThemed("Drugs", "cyan");
+     */
+    public static void printHeaderThemed(String title, String fgName) {
+        String t = " " + title + " ";
+        int w = Math.max(42, t.length() + 6);
+        String top = TL + repeat(H, w) + TR;
+        String mid = V + center(t, w) + V;
+        String bot = BL + repeat(H, w) + BR;
+
+        if (Ansi.isEnabled()){
+            if (fgName == null || fgName.trim().isEmpty()) fgName = "cyan";
+            String fg = Ansi.fg(fgName) + Ansi.bold();
+            System.out.println(fg + top + Ansi.reset());
+            System.out.println(fg + mid + Ansi.reset());
+            System.out.println(fg + bot + Ansi.reset());
+        } else {
+            String aa = "+" + repeat('-', w) + "+";
+            System.out.println(aa);
+            System.out.println("|" + center(t, w) + "|");
+            System.out.println(aa);
+        }
+        System.out.println();
+    }
+
+    /**
+     * Badge row to showcase algorithms/DS used on a screen.
+     * Example: printBadges("MergeSort", "BinarySearch");
+     */
+    public static void printBadges(String... labels){
+        if (labels == null || labels.length == 0) return;
+        StringBuilder line = new StringBuilder();
+        for (int i=0;i<labels.length;i++){
+            String lab = labels[i] == null ? "" : labels[i];
+            if (Ansi.isEnabled()){
+                line.append(Ansi.fg("cyan"))
+                        .append("[").append(lab).append("]")
+                        .append(Ansi.reset());
+            } else {
+                line.append('[').append(lab).append(']');
+            }
+            if (i < labels.length - 1) line.append(' ');
+        }
+        System.out.println(line.toString());
         System.out.println();
     }
 
@@ -190,7 +239,7 @@ public final class ConsoleIO {
         return repeat(c, m);
     }
     private static String repeat(char c, short n){ return repeat(c, (int)n); }
-    private static String repeat(char c, byte n){ return repeat(c, (int)n); }
+    private static String repeat(char c, byte n){  return repeat(c, (int)n); }
 
     private static String repeat(char c, Integer n){ return repeat(c, n == null ? 0 : n.intValue()); }
     private static String repeat(char c, int n, int extra){ return repeat(c, n + extra); }

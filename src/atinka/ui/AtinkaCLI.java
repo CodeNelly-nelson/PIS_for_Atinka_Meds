@@ -14,6 +14,7 @@ import atinka.storage.PurchaseLogCsv;
 import atinka.storage.SaleLogCsv;
 import atinka.storage.SupplierCsvStore;
 import atinka.util.ConsoleIO;
+import atinka.util.SimpleScreen;
 import atinka.util.Tui;
 
 public final class AtinkaCLI {
@@ -61,21 +62,24 @@ public final class AtinkaCLI {
         this.customerUI = new CustomerUI(customers, this::saveCustomers);
         this.salesUI = new SalesUI(inventory, saleLog, this::saveDrugs);
         this.reportUI = new ReportUI();
-        // hand services to ReportUI
         ReportUI.DRUGS = drugs;
         ReportUI.SALES = saleLog;
     }
 
     public void run(){
         while (true){
-            ConsoleIO.clearScreen();
-            ConsoleIO.printHeader("Atinka Meds — Main Menu");
-            ConsoleIO.println("1) Drugs");
-            ConsoleIO.println("2) Suppliers");
-            ConsoleIO.println("3) Customers");
-            ConsoleIO.println("4) Sales");
-            ConsoleIO.println("5) Reports");
-            ConsoleIO.println("0) Exit");
+            String[] algos = new String[]{ "Vec", "HashMapOpen", "MergeSort", "BinarySearch", "MinHeap" };
+            String[] body = new String[]{
+                    " 1) Drugs         — list/sort/search, low-stock heap, latest purchases",
+                    " 2) Suppliers     — list/sort/filter",
+                    " 3) Customers     — CRUD",
+                    " 4) Sales         — record sale/purchase, daily/month totals",
+                    " 5) Reports       — performance & sales period",
+                    "",
+                    " 0) Exit"
+            };
+            SimpleScreen.render("Atinka Meds — Main Menu", algos, body);
+
             int c = ConsoleIO.readIntInRange("Choose: ", 0, 5);
             if (c == 0) {
                 Tui.toastInfo("Goodbye.");
@@ -92,16 +96,7 @@ public final class AtinkaCLI {
     }
 
     // -------- Persistence hooks --------
-    private void saveDrugs(){
-        Vec<Drug> all = drugs.all();
-        drugStore.saveAll(all);
-    }
-    private void saveSuppliers(){
-        Vec<Supplier> all = suppliers.all();
-        supplierStore.saveAll(all);
-    }
-    private void saveCustomers(){
-        Vec<Customer> all = customers.all();
-        customerStore.saveAll(all);
-    }
+    private void saveDrugs(){ Vec<Drug> all = drugs.all(); drugStore.saveAll(all); }
+    private void saveSuppliers(){ Vec<Supplier> all = suppliers.all(); supplierStore.saveAll(all); }
+    private void saveCustomers(){ Vec<Customer> all = customers.all(); customerStore.saveAll(all); }
 }
