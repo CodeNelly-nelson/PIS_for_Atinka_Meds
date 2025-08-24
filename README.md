@@ -163,7 +163,6 @@ The program is designed as a **DSA showcase**. Every major feature is backed by 
 
 The architecture connects storage → in-memory data structures → services → CLI:
 
-```mermaid
 flowchart TD
     subgraph Storage[💾 CSV Storage]
         D1[drugs.csv]
